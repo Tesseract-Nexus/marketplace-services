@@ -2,23 +2,30 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"customers-service/internal/clients"
 	"customers-service/internal/models"
 	"customers-service/internal/services"
 )
 
 // CustomerHandler handles customer HTTP requests
 type CustomerHandler struct {
-	service *services.CustomerService
+	service            *services.CustomerService
+	notificationClient *clients.NotificationClient
 }
 
 // NewCustomerHandler creates a new customer handler
 func NewCustomerHandler(service *services.CustomerService) *CustomerHandler {
-	return &CustomerHandler{service: service}
+	return &CustomerHandler{
+		service:            service,
+		notificationClient: clients.NewNotificationClient(),
+	}
 }
 
 // CreateCustomer handles POST /api/v1/customers
@@ -518,18 +525,72 @@ func (h *CustomerHandler) SendVerificationEmail(c *gin.Context) {
 		return
 	}
 
+	// Get the customer to retrieve their email and name
+	customer, err := h.service.GetCustomer(c.Request.Context(), tenantID, customerID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "customer not found"})
+		return
+	}
+
+	// Generate verification token
 	token, err := h.service.GenerateVerificationToken(c.Request.Context(), tenantID, customerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// In production, this would trigger an email via notification service
-	// For now, return the token (useful for testing)
-	c.JSON(http.StatusOK, gin.H{
+	// Build the verification link
+	// Use the storefront URL from X-Storefront-Host header or environment variable
+	storefrontHost := c.GetHeader("X-Storefront-Host")
+	if storefrontHost == "" {
+		storefrontHost = os.Getenv("STOREFRONT_URL")
+	}
+	if storefrontHost == "" {
+		storefrontHost = "https://store.tesserix.app"
+	}
+	// Ensure URL has scheme
+	if !strings.HasPrefix(storefrontHost, "http") {
+		storefrontHost = "https://" + storefrontHost
+	}
+	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", storefrontHost, token)
+
+	// Send verification email via notification service
+	customerName := customer.FirstName
+	if customer.LastName != "" {
+		customerName = customer.FirstName + " " + customer.LastName
+	}
+
+	notification := &clients.EmailVerificationNotification{
+		TenantID:         tenantID,
+		CustomerID:       customerID.String(),
+		CustomerEmail:    customer.Email,
+		CustomerName:     customerName,
+		VerificationLink: verificationLink,
+		StorefrontURL:    storefrontHost,
+	}
+
+	if err := h.notificationClient.SendEmailVerificationNotification(c.Request.Context(), notification); err != nil {
+		log.Printf("Failed to send verification email to %s: %v", customer.Email, err)
+		// Don't fail the request - token was generated successfully
+		// Just log the error and return success with a note
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Verification token generated, but email delivery may be delayed",
+			"token":   token, // Include token for dev/testing purposes
+		})
+		return
+	}
+
+	log.Printf("Verification email sent to %s for customer %s", customer.Email, customerID)
+
+	// Return success - in production, don't include the token
+	response := gin.H{
 		"message": "Verification email sent",
-		"token":   token, // Remove in production
-	})
+	}
+	// Only include token in non-production environments for testing
+	if os.Getenv("GO_ENV") != "production" {
+		response["token"] = token
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // VerifyEmailRequest represents the request body for email verification

@@ -182,7 +182,8 @@ func main() {
 
 	// Public/Storefront endpoints for reading categories (no auth required)
 	// These are read-only endpoints for anonymous storefront access
-	storefront := router.Group("/storefront")
+	// NOTE: Routes are under /api/v1 for consistency with products-service and other services
+	storefront := router.Group("/api/v1/storefront")
 	storefront.Use(middleware.TenantMiddleware())
 	{
 		storefront.GET("/categories", categoryHandler.GetCategoryList)

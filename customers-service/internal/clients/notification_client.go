@@ -94,6 +94,40 @@ func (c *NotificationClient) SendEmailVerifiedNotification(ctx context.Context, 
 	return c.sendNotification(ctx, req)
 }
 
+// EmailVerificationNotification represents an email verification request.
+type EmailVerificationNotification struct {
+	TenantID         string `json:"tenantId"`
+	CustomerID       string `json:"customerId"`
+	CustomerEmail    string `json:"customerEmail"`
+	CustomerName     string `json:"customerName"`
+	VerificationLink string `json:"verificationLink"`
+	BusinessName     string `json:"businessName"`
+	StorefrontURL    string `json:"storefrontUrl"`
+	SupportEmail     string `json:"supportEmail"`
+}
+
+// SendEmailVerificationNotification sends a verification email to the customer.
+func (c *NotificationClient) SendEmailVerificationNotification(ctx context.Context, notification *EmailVerificationNotification) error {
+	req := notificationRequest{
+		Channel:        "EMAIL",
+		RecipientEmail: notification.CustomerEmail,
+		Subject:        "Please verify your email address",
+		TemplateName:   "customer-verification",
+		TenantID:       notification.TenantID,
+		UserID:         notification.CustomerID,
+		Variables: map[string]interface{}{
+			"customerName":     notification.CustomerName,
+			"customerEmail":    notification.CustomerEmail,
+			"verificationLink": notification.VerificationLink,
+			"businessName":     notification.BusinessName,
+			"storefrontUrl":    notification.StorefrontURL,
+			"supportEmail":     notification.SupportEmail,
+		},
+	}
+
+	return c.sendNotification(ctx, req)
+}
+
 // sendNotification sends a notification request to the notification-service.
 func (c *NotificationClient) sendNotification(ctx context.Context, req notificationRequest) error {
 	body, err := json.Marshal(req)
