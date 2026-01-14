@@ -3,6 +3,7 @@ module categories-service
 go 1.25
 
 require (
+	github.com/Tesseract-Nexus/go-shared v0.0.0-20260114152147-11cd2a14e96d
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.6.0
@@ -11,13 +12,10 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
-	github.com/tesseract-hub/go-shared v0.0.0
 	github.com/xuri/excelize/v2 v2.10.0
 	gorm.io/driver/postgres v1.5.6
 	gorm.io/gorm v1.25.7
 )
-
-replace github.com/tesseract-hub/go-shared => ../../packages/go-shared
 
 require (
 	cloud.google.com/go/compute v1.23.1 // indirect
