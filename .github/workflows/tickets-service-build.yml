@@ -65,7 +65,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: tickets-service
-          file: services/tickets-service/Dockerfile
+          file: tickets-service/Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

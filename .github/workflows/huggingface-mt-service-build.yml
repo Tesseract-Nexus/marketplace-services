@@ -64,8 +64,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: services/huggingface-mt-service
-          file: services/huggingface-mt-service/Dockerfile
+          context: huggingface-mt-service
+          file: huggingface-mt-service/Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
