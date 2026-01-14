@@ -1,0 +1,435 @@
+openapi: 3.0.3
+info:
+  title: Marketing Service API
+  description: Marketing automation with campaigns, segments, loyalty, and coupons
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Campaigns
+  - name: Segments
+  - name: Abandoned Carts
+  - name: Loyalty
+  - name: Coupons
+
+paths:
+  /api/v1/campaigns:
+    post:
+      tags: [Campaigns]
+      summary: Create campaign
+      operationId: createCampaign
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Campaign created
+    get:
+      tags: [Campaigns]
+      summary: List campaigns
+      operationId: listCampaigns
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: channel
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Campaigns list
+
+  /api/v1/campaigns/{id}:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign
+      operationId: getCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign details
+    put:
+      tags: [Campaigns]
+      summary: Update campaign
+      operationId: updateCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign updated
+    delete:
+      tags: [Campaigns]
+      summary: Delete campaign
+      operationId: deleteCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign deleted
+
+  /api/v1/campaigns/{id}/send:
+    post:
+      tags: [Campaigns]
+      summary: Send campaign
+      operationId: sendCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign sent
+
+  /api/v1/campaigns/{id}/schedule:
+    post:
+      tags: [Campaigns]
+      summary: Schedule campaign
+      operationId: scheduleCampaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign scheduled
+
+  /api/v1/segments:
+    post:
+      tags: [Segments]
+      summary: Create segment
+      operationId: createSegment
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Segment created
+    get:
+      tags: [Segments]
+      summary: List segments
+      operationId: listSegments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Segments list
+
+  /api/v1/segments/{id}:
+    get:
+      tags: [Segments]
+      summary: Get segment
+      operationId: getSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment details
+    put:
+      tags: [Segments]
+      summary: Update segment
+      operationId: updateSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment updated
+    delete:
+      tags: [Segments]
+      summary: Delete segment
+      operationId: deleteSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment deleted
+
+  /api/v1/abandoned-carts:
+    post:
+      tags: [Abandoned Carts]
+      summary: Create abandoned cart
+      operationId: createAbandonedCart
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Cart created
+    get:
+      tags: [Abandoned Carts]
+      summary: List abandoned carts
+      operationId: listAbandonedCarts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Abandoned carts list
+
+  /api/v1/abandoned-carts/stats:
+    get:
+      tags: [Abandoned Carts]
+      summary: Get cart statistics
+      operationId: getAbandonedCartStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cart statistics
+
+  /api/v1/loyalty/program:
+    post:
+      tags: [Loyalty]
+      summary: Create loyalty program
+      operationId: createLoyaltyProgram
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Program created
+    get:
+      tags: [Loyalty]
+      summary: Get loyalty program
+      operationId: getLoyaltyProgram
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Program details
+    put:
+      tags: [Loyalty]
+      summary: Update loyalty program
+      operationId: updateLoyaltyProgram
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Program updated
+
+  /api/v1/loyalty/customers/{customerId}:
+    get:
+      tags: [Loyalty]
+      summary: Get customer loyalty
+      operationId: getCustomerLoyalty
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer loyalty details
+
+  /api/v1/loyalty/customers/{customerId}/enroll:
+    post:
+      tags: [Loyalty]
+      summary: Enroll customer
+      operationId: enrollCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer enrolled
+
+  /api/v1/loyalty/customers/{customerId}/redeem:
+    post:
+      tags: [Loyalty]
+      summary: Redeem points
+      operationId: redeemPoints
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Points redeemed
+
+  /api/v1/loyalty/customers/{customerId}/transactions:
+    get:
+      tags: [Loyalty]
+      summary: Get transactions
+      operationId: getLoyaltyTransactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction history
+
+  /api/v1/coupons:
+    post:
+      tags: [Coupons]
+      summary: Create coupon
+      operationId: createCoupon
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Coupon created
+    get:
+      tags: [Coupons]
+      summary: List coupons
+      operationId: listCoupons
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Coupons list
+
+  /api/v1/coupons/{id}:
+    get:
+      tags: [Coupons]
+      summary: Get coupon
+      operationId: getCoupon
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Coupon details
+    put:
+      tags: [Coupons]
+      summary: Update coupon
+      operationId: updateCoupon
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Coupon updated
+    delete:
+      tags: [Coupons]
+      summary: Delete coupon
+      operationId: deleteCoupon
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Coupon deleted
+
+  /api/v1/coupons/validate:
+    post:
+      tags: [Coupons]
+      summary: Validate coupon
+      operationId: validateCoupon
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Validation result
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

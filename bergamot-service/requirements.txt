@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+aiohttp==3.11.11
+# Bergamot translator - Mozilla's translation engine
+# Note: May need to be built from source or use pre-built wheels
+# bergamot-translator>=0.1.0
+# CTranslate2 as fallback (lighter weight, CPU optimized)
+ctranslate2==4.5.0
+sentencepiece==0.2.0

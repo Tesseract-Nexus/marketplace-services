@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: Shipping Service API
+  description: Multi-carrier shipping management with tracking and rate calculation
+  version: 1.0.0
+servers:
+  - url: http://localhost:8088
+    description: Local development
+tags:
+  - name: Shipments
+  - name: Rates
+  - name: Tracking
+
+paths:
+  /api/shipments:
+    post:
+      tags: [Shipments]
+      summary: Create shipment
+      operationId: createShipment
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShipmentRequest'
+      responses:
+        '201':
+          description: Shipment created
+    get:
+      tags: [Shipments]
+      summary: List shipments
+      operationId: listShipments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Shipments list
+
+  /api/shipments/{id}:
+    get:
+      tags: [Shipments]
+      summary: Get shipment
+      operationId: getShipment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shipment details
+
+  /api/shipments/order/{orderId}:
+    get:
+      tags: [Shipments]
+      summary: Get shipments by order
+      operationId: getShipmentsByOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order shipments
+
+  /api/shipments/{id}/cancel:
+    put:
+      tags: [Shipments]
+      summary: Cancel shipment
+      operationId: cancelShipment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shipment cancelled
+
+  /api/shipments/{id}/status:
+    put:
+      tags: [Shipments]
+      summary: Update status
+      operationId: updateShipmentStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/rates:
+    post:
+      tags: [Rates]
+      summary: Get shipping rates
+      operationId: getShippingRates
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateRequest'
+      responses:
+        '200':
+          description: Available rates
+
+  /api/track/{trackingNumber}:
+    get:
+      tags: [Tracking]
+      summary: Track shipment
+      operationId: trackShipment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: trackingNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tracking information
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateShipmentRequest:
+      type: object
+      required: [orderId, fromAddress, toAddress, weight]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        orderNumber:
+          type: string
+        fromAddress:
+          $ref: '#/components/schemas/Address'
+        toAddress:
+          $ref: '#/components/schemas/Address'
+        weight:
+          type: number
+        length:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        notes:
+          type: string
+
+    Address:
+      type: object
+      required: [name, street, city, state, postalCode, country]
+      properties:
+        name:
+          type: string
+        company:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        street:
+          type: string
+        street2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+
+    RateRequest:
+      type: object
+      required: [fromAddress, toAddress, weight]
+      properties:
+        fromAddress:
+          $ref: '#/components/schemas/Address'
+        toAddress:
+          $ref: '#/components/schemas/Address'
+        weight:
+          type: number
+        length:
+          type: number
+        width:
+          type: number
+        height:
+          type: number

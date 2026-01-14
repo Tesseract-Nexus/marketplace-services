@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS tax_reports CASCADE;
+DROP TABLE IF EXISTS tax_report CASCADE;
+DROP TABLE IF EXISTS tax_nexuses CASCADE;
+DROP TABLE IF EXISTS tax_nexus CASCADE;
+DROP TABLE IF EXISTS tax_calculation_caches CASCADE;
+DROP TABLE IF EXISTS tax_calculation_cache CASCADE;
+DROP TABLE IF EXISTS tax_exemption_certificates CASCADE;
+DROP TABLE IF EXISTS tax_rate_category_overrides CASCADE;
+DROP TABLE IF EXISTS tax_rates CASCADE;
+DROP TABLE IF EXISTS product_tax_categories CASCADE;
+DROP TABLE IF EXISTS tax_jurisdictions CASCADE;
+DELETE FROM migration_records WHERE version = '001_create_tax_tables.sql';
+DELETE FROM migration_records WHERE version = '002_seed_tax_data.sql';
+DELETE FROM migration_records WHERE version = '003_add_gst_and_compound_tax.sql';
+DELETE FROM migration_records WHERE version = '004_seed_global_tax_data.sql';

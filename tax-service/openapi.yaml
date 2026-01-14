@@ -1,0 +1,292 @@
+openapi: 3.0.3
+info:
+  title: Tax Service API
+  description: Tax calculation and management
+  version: 1.0.0
+servers:
+  - url: http://localhost:8091
+    description: Local development
+tags:
+  - name: Tax Calculation
+  - name: Jurisdictions
+  - name: Tax Rates
+  - name: Product Categories
+  - name: Exemptions
+
+paths:
+  /api/v1/tax/calculate:
+    post:
+      tags: [Tax Calculation]
+      summary: Calculate tax
+      operationId: calculateTax
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tax calculated
+
+  /api/v1/tax/validate-address:
+    post:
+      tags: [Tax Calculation]
+      summary: Validate address for tax
+      operationId: validateAddressForTax
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Address validated
+
+  /api/v1/jurisdictions:
+    get:
+      tags: [Jurisdictions]
+      summary: List jurisdictions
+      operationId: listJurisdictions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Jurisdictions list
+    post:
+      tags: [Jurisdictions]
+      summary: Create jurisdiction
+      operationId: createJurisdiction
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Jurisdiction created
+
+  /api/v1/jurisdictions/{id}:
+    get:
+      tags: [Jurisdictions]
+      summary: Get jurisdiction
+      operationId: getJurisdiction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Jurisdiction details
+    put:
+      tags: [Jurisdictions]
+      summary: Update jurisdiction
+      operationId: updateJurisdiction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Jurisdiction updated
+    delete:
+      tags: [Jurisdictions]
+      summary: Delete jurisdiction
+      operationId: deleteJurisdiction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Jurisdiction deleted
+
+  /api/v1/jurisdictions/{jurisdictionId}/rates:
+    get:
+      tags: [Tax Rates]
+      summary: List tax rates for jurisdiction
+      operationId: listTaxRates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jurisdictionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tax rates list
+
+  /api/v1/rates:
+    post:
+      tags: [Tax Rates]
+      summary: Create tax rate
+      operationId: createTaxRate
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Tax rate created
+
+  /api/v1/rates/{id}:
+    put:
+      tags: [Tax Rates]
+      summary: Update tax rate
+      operationId: updateTaxRate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tax rate updated
+    delete:
+      tags: [Tax Rates]
+      summary: Delete tax rate
+      operationId: deleteTaxRate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tax rate deleted
+
+  /api/v1/categories:
+    get:
+      tags: [Product Categories]
+      summary: List product categories for tax
+      operationId: listProductCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Categories list
+    post:
+      tags: [Product Categories]
+      summary: Create product category
+      operationId: createProductCategory
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Category created
+
+  /api/v1/categories/{id}:
+    put:
+      tags: [Product Categories]
+      summary: Update product category
+      operationId: updateProductCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category updated
+    delete:
+      tags: [Product Categories]
+      summary: Delete product category
+      operationId: deleteProductCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category deleted
+
+  /api/v1/exemptions:
+    get:
+      tags: [Exemptions]
+      summary: List exemption certificates
+      operationId: listExemptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Exemptions list
+    post:
+      tags: [Exemptions]
+      summary: Create exemption certificate
+      operationId: createExemption
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Exemption created
+
+  /api/v1/exemptions/{id}:
+    get:
+      tags: [Exemptions]
+      summary: Get exemption certificate
+      operationId: getExemption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Exemption details
+    put:
+      tags: [Exemptions]
+      summary: Update exemption certificate
+      operationId: updateExemption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Exemption updated
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

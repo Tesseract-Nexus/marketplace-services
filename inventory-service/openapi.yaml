@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Inventory Service API
+  description: Warehouse, supplier, and inventory management
+  version: 1.0.0
+servers:
+  - url: http://localhost:8088
+    description: Local development
+tags:
+  - name: Warehouses
+  - name: Suppliers
+  - name: Purchase Orders
+  - name: Transfers
+  - name: Stock
+
+paths:
+  /api/v1/warehouses:
+    get:
+      tags: [Warehouses]
+      summary: List warehouses
+      operationId: listWarehouses
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Warehouses list
+    post:
+      tags: [Warehouses]
+      summary: Create warehouse
+      operationId: createWarehouse
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Warehouse created
+
+  /api/v1/warehouses/{id}:
+    get:
+      tags: [Warehouses]
+      summary: Get warehouse
+      operationId: getWarehouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Warehouse details
+    put:
+      tags: [Warehouses]
+      summary: Update warehouse
+      operationId: updateWarehouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Warehouse updated
+    delete:
+      tags: [Warehouses]
+      summary: Delete warehouse
+      operationId: deleteWarehouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Warehouse deleted
+
+  /api/v1/suppliers:
+    get:
+      tags: [Suppliers]
+      summary: List suppliers
+      operationId: listSuppliers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Suppliers list
+    post:
+      tags: [Suppliers]
+      summary: Create supplier
+      operationId: createSupplier
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Supplier created
+
+  /api/v1/suppliers/{id}:
+    get:
+      tags: [Suppliers]
+      summary: Get supplier
+      operationId: getSupplier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Supplier details
+    put:
+      tags: [Suppliers]
+      summary: Update supplier
+      operationId: updateSupplier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Supplier updated
+    delete:
+      tags: [Suppliers]
+      summary: Delete supplier
+      operationId: deleteSupplier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Supplier deleted
+
+  /api/v1/purchase-orders:
+    get:
+      tags: [Purchase Orders]
+      summary: List purchase orders
+      operationId: listPurchaseOrders
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Purchase orders list
+    post:
+      tags: [Purchase Orders]
+      summary: Create purchase order
+      operationId: createPurchaseOrder
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Purchase order created
+
+  /api/v1/purchase-orders/{id}:
+    get:
+      tags: [Purchase Orders]
+      summary: Get purchase order
+      operationId: getPurchaseOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Purchase order details
+
+  /api/v1/purchase-orders/{id}/status:
+    put:
+      tags: [Purchase Orders]
+      summary: Update PO status
+      operationId: updatePurchaseOrderStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/v1/purchase-orders/{id}/receive:
+    post:
+      tags: [Purchase Orders]
+      summary: Receive purchase order
+      operationId: receivePurchaseOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PO received
+
+  /api/v1/transfers:
+    get:
+      tags: [Transfers]
+      summary: List inventory transfers
+      operationId: listTransfers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Transfers list
+    post:
+      tags: [Transfers]
+      summary: Create inventory transfer
+      operationId: createTransfer
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Transfer created
+
+  /api/v1/transfers/{id}:
+    get:
+      tags: [Transfers]
+      summary: Get transfer
+      operationId: getTransfer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transfer details
+
+  /api/v1/transfers/{id}/status:
+    put:
+      tags: [Transfers]
+      summary: Update transfer status
+      operationId: updateTransferStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/v1/transfers/{id}/complete:
+    post:
+      tags: [Transfers]
+      summary: Complete transfer
+      operationId: completeTransfer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transfer completed
+
+  /api/v1/stock:
+    get:
+      tags: [Stock]
+      summary: List stock levels
+      operationId: listStockLevels
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Stock levels
+
+  /api/v1/stock/level:
+    get:
+      tags: [Stock]
+      summary: Get stock level
+      operationId: getStockLevel
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Stock level
+
+  /api/v1/stock/low:
+    get:
+      tags: [Stock]
+      summary: Get low stock items
+      operationId: getLowStockItems
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Low stock items
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

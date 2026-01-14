@@ -1,0 +1,289 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: Payment processing with multiple gateway support
+  version: 1.0.0
+servers:
+  - url: http://localhost:8093
+    description: Local development
+tags:
+  - name: Payments
+  - name: Refunds
+  - name: Gateway Config
+  - name: Webhooks
+
+paths:
+  /api/v1/payments/create-intent:
+    post:
+      tags: [Payments]
+      summary: Create payment intent
+      operationId: createPaymentIntent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentIntentInput'
+      responses:
+        '201':
+          description: Payment intent created
+
+  /api/v1/payments/confirm:
+    post:
+      tags: [Payments]
+      summary: Confirm payment
+      operationId: confirmPayment
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Payment confirmed
+
+  /api/v1/payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Get payment status
+      operationId: getPaymentStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment status
+
+  /api/v1/payments/{id}/cancel:
+    post:
+      tags: [Payments]
+      summary: Cancel payment
+      operationId: cancelPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment cancelled
+
+  /api/v1/payments/{id}/refund:
+    post:
+      tags: [Refunds]
+      summary: Create refund
+      operationId: createRefund
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Refund created
+
+  /api/v1/payments/{id}/refunds:
+    get:
+      tags: [Refunds]
+      summary: List refunds by payment
+      operationId: listRefundsByPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Refunds list
+
+  /api/v1/orders/{orderId}/payments:
+    get:
+      tags: [Payments]
+      summary: List payments by order
+      operationId: listPaymentsByOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payments list
+
+  /api/v1/gateway-configs:
+    get:
+      tags: [Gateway Config]
+      summary: List gateway configs
+      operationId: listGatewayConfigs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Gateway configs list
+    post:
+      tags: [Gateway Config]
+      summary: Create gateway config
+      operationId: createGatewayConfig
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Config created
+
+  /api/v1/gateway-configs/{id}:
+    get:
+      tags: [Gateway Config]
+      summary: Get gateway config
+      operationId: getGatewayConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Config details
+    put:
+      tags: [Gateway Config]
+      summary: Update gateway config
+      operationId: updateGatewayConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Config updated
+    delete:
+      tags: [Gateway Config]
+      summary: Delete gateway config
+      operationId: deleteGatewayConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Config deleted
+
+  /webhooks/razorpay:
+    post:
+      tags: [Webhooks]
+      summary: Razorpay webhook
+      operationId: handleRazorpayWebhook
+      responses:
+        '200':
+          description: Webhook processed
+
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      summary: Stripe webhook
+      operationId: handleStripeWebhook
+      responses:
+        '200':
+          description: Webhook processed
+
+  /webhooks/paypal:
+    post:
+      tags: [Webhooks]
+      summary: PayPal webhook
+      operationId: handlePayPalWebhook
+      responses:
+        '200':
+          description: Webhook processed
+
+  /webhooks/payu:
+    post:
+      tags: [Webhooks]
+      summary: PayU webhook
+      operationId: handlePayUWebhook
+      responses:
+        '200':
+          description: Webhook processed
+
+  /webhooks/cashfree:
+    post:
+      tags: [Webhooks]
+      summary: Cashfree webhook
+      operationId: handleCashfreeWebhook
+      responses:
+        '200':
+          description: Webhook processed
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PaymentIntentInput:
+      type: object
+      required: [amount, currency, order_id]
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+        order_id:
+          type: string
+          format: uuid
+        gateway:
+          type: string
+          enum: [razorpay, stripe, paypal, payu, cashfree]
+        metadata:
+          type: object

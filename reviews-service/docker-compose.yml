@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  reviews-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: reviews_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5436:5432"
+    volumes:
+      - reviews_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  reviews-service:
+    build: .
+    ports:
+      - "8084:8084"
+    environment:
+      - DB_HOST=reviews-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=reviews_db
+      - DB_SSL_MODE=disable
+      - PORT=8084
+      - ENVIRONMENT=development
+      - JWT_SECRET=your-secret-key
+      - ML_SERVICE_URL=http://localhost:8090
+      - MEDIA_SERVICE_URL=http://localhost:8091
+      - MAX_REVIEW_LENGTH=5000
+      - MAX_MEDIA_PER_REVIEW=10
+      - SPAM_DETECTION_THRESHOLD=0.8
+      - AUTO_MODERATION_ENABLED=true
+    depends_on:
+      reviews-db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    working_dir: /app
+
+volumes:
+  reviews_postgres_data:

@@ -1,0 +1,43 @@
+package middleware
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+// TenantMiddleware extracts tenant ID from headers
+func TenantMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Try to get tenant ID from X-Vendor-ID header first (standard)
+		tenantID := c.GetHeader("X-Vendor-ID")
+
+		// Fall back to X-Tenant-ID header (legacy)
+		if tenantID == "" {
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
+
+		// SECURITY: No default fallback - fail closed
+		if tenantID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "TENANT_REQUIRED",
+					"message": "Vendor/Tenant ID is required. Include X-Vendor-ID or X-Tenant-ID header.",
+				},
+			})
+			c.Abort()
+			return
+		}
+
+		// Set tenant ID in context for handlers to use
+		c.Set("tenant_id", tenantID)
+		c.Set("vendor_id", tenantID)
+		c.Next()
+	}
+}
+
+// GetTenantID retrieves the tenant ID from gin context
+func GetTenantID(c *gin.Context) string {
+	return c.GetString("tenant_id")
+}

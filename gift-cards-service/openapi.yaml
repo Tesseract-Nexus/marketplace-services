@@ -1,0 +1,286 @@
+openapi: 3.0.3
+info:
+  title: Gift Cards Service API
+  description: Digital gift card management with redemption and tracking
+  version: 1.0.0
+servers:
+  - url: http://localhost:8083
+    description: Local development
+tags:
+  - name: Gift Cards
+  - name: Operations
+  - name: Analytics
+
+paths:
+  /api/v1/gift-cards:
+    post:
+      tags: [Gift Cards]
+      summary: Create gift card
+      operationId: createGiftCard
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGiftCardRequest'
+      responses:
+        '201':
+          description: Gift card created
+    get:
+      tags: [Gift Cards]
+      summary: List gift cards
+      operationId: listGiftCards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, REDEEMED, EXPIRED, CANCELLED, SUSPENDED]
+        - name: purchasedBy
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: minBalance
+          in: query
+          schema:
+            type: number
+        - name: maxBalance
+          in: query
+          schema:
+            type: number
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Gift cards list
+
+  /api/v1/gift-cards/{id}:
+    get:
+      tags: [Gift Cards]
+      summary: Get gift card
+      operationId: getGiftCard
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gift card details
+    put:
+      tags: [Gift Cards]
+      summary: Update gift card
+      operationId: updateGiftCard
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gift card updated
+    delete:
+      tags: [Gift Cards]
+      summary: Delete gift card
+      operationId: deleteGiftCard
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gift card deleted
+
+  /api/v1/gift-cards/{id}/status:
+    patch:
+      tags: [Gift Cards]
+      summary: Update status
+      operationId: updateGiftCardStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/v1/gift-cards/check-balance:
+    post:
+      tags: [Operations]
+      summary: Check balance
+      operationId: checkBalance
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Balance information
+
+  /api/v1/gift-cards/redeem:
+    post:
+      tags: [Operations]
+      summary: Redeem gift card
+      operationId: redeemGiftCard
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                amount:
+                  type: number
+      responses:
+        '200':
+          description: Redemption successful
+
+  /api/v1/gift-cards/apply:
+    post:
+      tags: [Operations]
+      summary: Apply to order
+      operationId: applyGiftCard
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                orderId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Validation result
+
+  /api/v1/gift-cards/refund:
+    post:
+      tags: [Operations]
+      summary: Refund to gift card
+      operationId: refundGiftCard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Refund successful
+
+  /api/v1/gift-cards/stats:
+    get:
+      tags: [Analytics]
+      summary: Get statistics
+      operationId: getGiftCardStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Gift card statistics
+
+  /api/v1/gift-cards/{id}/transactions:
+    get:
+      tags: [Analytics]
+      summary: Get transaction history
+      operationId: getGiftCardTransactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction history
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateGiftCardRequest:
+      type: object
+      required: [initialBalance]
+      properties:
+        initialBalance:
+          type: number
+        currencyCode:
+          type: string
+          default: USD
+        recipientEmail:
+          type: string
+        recipientName:
+          type: string
+        senderName:
+          type: string
+        message:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object

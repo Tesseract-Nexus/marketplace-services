@@ -1,0 +1,667 @@
+openapi: 3.0.3
+info:
+  title: Orders Service API
+  description: Order and Returns Management Service
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Orders
+  - name: Returns
+
+paths:
+  /api/v1/orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      operationId: listOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PLACED, CONFIRMED, PROCESSING, COMPLETED, CANCELLED]
+        - name: paymentStatus
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        - name: fulfillmentStatus
+          in: query
+          schema:
+            type: string
+            enum: [UNFULFILLED, PROCESSING, PACKED, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED_DELIVERY, RETURNED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Orders list
+    post:
+      tags: [Orders]
+      summary: Create order
+      operationId: createOrder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '201':
+          description: Order created
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Get order by ID
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order details
+    put:
+      tags: [Orders]
+      summary: Update order
+      operationId: updateOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order updated
+
+  /api/v1/orders/number/{orderNumber}:
+    get:
+      tags: [Orders]
+      summary: Get order by order number
+      operationId: getOrderByNumber
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order details
+
+  /api/v1/orders/{id}/status:
+    patch:
+      tags: [Orders]
+      summary: Update order status
+      operationId: updateOrderStatus
+      description: Update the overall order lifecycle status (PLACED -> CONFIRMED -> PROCESSING -> COMPLETED or CANCELLED)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [PLACED, CONFIRMED, PROCESSING, COMPLETED, CANCELLED]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Status updated
+        '400':
+          description: Invalid status transition
+
+  /api/v1/orders/{id}/payment-status:
+    patch:
+      tags: [Orders]
+      summary: Update payment status
+      operationId: updatePaymentStatus
+      description: Update the payment status of an order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentStatus]
+              properties:
+                paymentStatus:
+                  type: string
+                  enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+                transactionId:
+                  type: string
+      responses:
+        '200':
+          description: Payment status updated
+        '400':
+          description: Invalid payment status transition
+
+  /api/v1/orders/{id}/fulfillment-status:
+    patch:
+      tags: [Orders]
+      summary: Update fulfillment status
+      operationId: updateFulfillmentStatus
+      description: Update the fulfillment/delivery status of an order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fulfillmentStatus]
+              properties:
+                fulfillmentStatus:
+                  type: string
+                  enum: [UNFULFILLED, PROCESSING, PACKED, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED_DELIVERY, RETURNED]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Fulfillment status updated
+        '400':
+          description: Invalid fulfillment status transition
+
+  /api/v1/orders/{id}/valid-transitions:
+    get:
+      tags: [Orders]
+      summary: Get valid status transitions
+      operationId: getValidStatusTransitions
+      description: Get the valid next status options for all three status tracks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Valid transitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidTransitionsResponse'
+
+  /api/v1/orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancel order
+      operationId: cancelOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order cancelled
+
+  /api/v1/orders/{id}/refund:
+    post:
+      tags: [Orders]
+      summary: Process refund
+      operationId: refundOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Refund processed
+
+  /api/v1/orders/{id}/tracking:
+    get:
+      tags: [Orders]
+      summary: Get order tracking
+      operationId: getOrderTracking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tracking information
+    post:
+      tags: [Orders]
+      summary: Add shipping tracking
+      operationId: addOrderTracking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tracking added
+
+  /api/v1/returns:
+    get:
+      tags: [Returns]
+      summary: List returns
+      operationId: listReturns
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Returns list
+    post:
+      tags: [Returns]
+      summary: Create return request
+      operationId: createReturn
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnInput'
+      responses:
+        '201':
+          description: Return created
+
+  /api/v1/returns/{id}:
+    get:
+      tags: [Returns]
+      summary: Get return by ID
+      operationId: getReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Return details
+
+  /api/v1/returns/rma/{rma}:
+    get:
+      tags: [Returns]
+      summary: Get return by RMA number
+      operationId: getReturnByRMA
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rma
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Return details
+
+  /api/v1/returns/stats:
+    get:
+      tags: [Returns]
+      summary: Get return statistics
+      operationId: getReturnStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Return statistics
+
+  /api/v1/returns/policy:
+    get:
+      tags: [Returns]
+      summary: Get return policy
+      operationId: getReturnPolicy
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Return policy
+    put:
+      tags: [Returns]
+      summary: Update return policy
+      operationId: updateReturnPolicy
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Policy updated
+
+  /api/v1/returns/{id}/approve:
+    post:
+      tags: [Returns]
+      summary: Approve return
+      operationId: approveReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Return approved
+
+  /api/v1/returns/{id}/reject:
+    post:
+      tags: [Returns]
+      summary: Reject return
+      operationId: rejectReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Return rejected
+
+  /api/v1/returns/{id}/in-transit:
+    post:
+      tags: [Returns]
+      summary: Mark return in transit
+      operationId: markReturnInTransit
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Marked in transit
+
+  /api/v1/returns/{id}/received:
+    post:
+      tags: [Returns]
+      summary: Mark return received
+      operationId: markReturnReceived
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Marked received
+
+  /api/v1/returns/{id}/inspect:
+    post:
+      tags: [Returns]
+      summary: Complete return inspection
+      operationId: inspectReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Inspection complete
+
+  /api/v1/returns/{id}/complete:
+    post:
+      tags: [Returns]
+      summary: Complete return and issue refund
+      operationId: completeReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Return completed
+
+  /api/v1/returns/{id}/cancel:
+    post:
+      tags: [Returns]
+      summary: Cancel return
+      operationId: cancelReturn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Return cancelled
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    OrderInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        shipping_address:
+          type: object
+        billing_address:
+          type: object
+        payment_method:
+          type: string
+
+    OrderItem:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        variant_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        price:
+          type: number
+
+    ReturnInput:
+      type: object
+      required: [order_id, items, reason]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              order_item_id:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+        reason:
+          type: string
+        comments:
+          type: string
+
+    ValidTransitionsResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        currentOrderStatus:
+          type: string
+          enum: [PLACED, CONFIRMED, PROCESSING, COMPLETED, CANCELLED]
+        currentPaymentStatus:
+          type: string
+          enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        currentFulfillmentStatus:
+          type: string
+          enum: [UNFULFILLED, PROCESSING, PACKED, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED_DELIVERY, RETURNED]
+        validOrderStatuses:
+          type: array
+          items:
+            type: string
+            enum: [PLACED, CONFIRMED, PROCESSING, COMPLETED, CANCELLED]
+        validPaymentStatuses:
+          type: array
+          items:
+            type: string
+            enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        validFulfillmentStatuses:
+          type: array
+          items:
+            type: string
+            enum: [UNFULFILLED, PROCESSING, PACKED, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED_DELIVERY, RETURNED]
+
+    OrderStatus:
+      type: string
+      enum: [PLACED, CONFIRMED, PROCESSING, COMPLETED, CANCELLED]
+      description: |
+        Order lifecycle status:
+        - PLACED: Order created, awaiting payment
+        - CONFIRMED: Payment successful, order accepted
+        - PROCESSING: Being fulfilled
+        - COMPLETED: Fully delivered
+        - CANCELLED: Cancelled before fulfillment
+
+    PaymentStatus:
+      type: string
+      enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+      description: |
+        Payment status:
+        - PENDING: Awaiting payment
+        - PAID: Payment received
+        - FAILED: Payment failed
+        - PARTIALLY_REFUNDED: Partial refund issued
+        - REFUNDED: Fully refunded
+
+    FulfillmentStatus:
+      type: string
+      enum: [UNFULFILLED, PROCESSING, PACKED, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED_DELIVERY, RETURNED]
+      description: |
+        Fulfillment/delivery status:
+        - UNFULFILLED: Not yet picked
+        - PROCESSING: Being picked/packed
+        - PACKED: Ready for dispatch
+        - DISPATCHED: Handed to carrier
+        - IN_TRANSIT: With carrier, en route
+        - OUT_FOR_DELIVERY: Last mile delivery
+        - DELIVERED: Successfully delivered
+        - FAILED_DELIVERY: Delivery attempt failed
+        - RETURNED: Returned to warehouse

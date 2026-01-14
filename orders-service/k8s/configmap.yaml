@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-service-config
+  namespace: default
+  labels:
+    app: orders-service
+data:
+  # Server Configuration
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8080"
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+
+  # Database Configuration
+  DB_PORT: "5432"
+  DB_NAME: "orders_db"
+  DB_SSL_MODE: "require"
+
+  # NATS Configuration for real-time admin notifications
+  # This connects to NATS JetStream for publishing order events
+  NATS_URL: "nats://nats.nats.svc.cluster.local:4222"
+
+  # External Service URLs (internal K8s DNS)
+  PRODUCTS_SERVICE_URL: "http://products-service.default.svc.cluster.local:8080"
+  TAX_SERVICE_URL: "http://tax-service.default.svc.cluster.local:8080"
+  CUSTOMERS_SERVICE_URL: "http://customers-service.default.svc.cluster.local:8080"
+  NOTIFICATION_SERVICE_URL: "http://notification-service.default.svc.cluster.local:8090"
+  TENANT_SERVICE_URL: "http://tenant-service.default.svc.cluster.local:8080"
+
+---
+# Secret template - values should be replaced with actual secrets
+# In production, use external secrets manager (GCP Secret Manager, Vault, etc.)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: orders-secrets
+  namespace: default
+  labels:
+    app: orders-service
+type: Opaque
+stringData:
+  # Replace these with actual values or use ExternalSecrets
+  db-host: "REPLACE_WITH_CLOUD_SQL_IP"
+  db-user: "orders_user"
+  db-password: "REPLACE_WITH_SECURE_PASSWORD"

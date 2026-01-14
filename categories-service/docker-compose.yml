@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: categories-service-postgres
+    environment:
+      POSTGRES_DB: categories_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/
+    networks:
+      - categories-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d categories_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  categories-service:
+    build: .
+    container_name: categories-service-api
+    ports:
+      - "8083:8083"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=categories_db
+      - DB_SSL_MODE=disable
+      - PORT=8083
+      - ENVIRONMENT=development
+      - JWT_SECRET=your-jwt-secret-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - categories-network
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:latest
+    container_name: categories-service-migrate
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:password@postgres:5432/categories_db?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - categories-network
+
+networks:
+  categories-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

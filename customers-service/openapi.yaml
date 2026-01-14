@@ -1,0 +1,378 @@
+openapi: 3.0.3
+info:
+  title: Customers Service API
+  description: Customer management with addresses, notes, segments, and payment methods
+  version: 1.0.0
+servers:
+  - url: http://localhost:8089
+    description: Local development
+tags:
+  - name: Customers
+  - name: Addresses
+  - name: Notes
+  - name: Payment Methods
+  - name: Segments
+
+paths:
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      operationId: listCustomers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Customers list
+    post:
+      tags: [Customers]
+      summary: Create customer
+      operationId: createCustomer
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Customer created
+
+  /api/v1/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Get customer
+      operationId: getCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer details
+    put:
+      tags: [Customers]
+      summary: Update customer
+      operationId: updateCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer updated
+    delete:
+      tags: [Customers]
+      summary: Delete customer
+      operationId: deleteCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer deleted
+
+  /api/v1/customers/{id}/addresses:
+    get:
+      tags: [Addresses]
+      summary: Get customer addresses
+      operationId: getAddresses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Addresses list
+    post:
+      tags: [Addresses]
+      summary: Add address
+      operationId: addAddress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Address added
+
+  /api/v1/customers/{id}/addresses/{addressId}:
+    delete:
+      tags: [Addresses]
+      summary: Delete address
+      operationId: deleteAddress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: addressId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Address deleted
+
+  /api/v1/customers/{id}/notes:
+    get:
+      tags: [Notes]
+      summary: Get customer notes
+      operationId: getNotes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notes list
+    post:
+      tags: [Notes]
+      summary: Add note
+      operationId: addNote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Note added
+
+  /api/v1/customers/{id}/communications:
+    get:
+      tags: [Customers]
+      summary: Get communication history
+      operationId: getCommunicationHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Communication history
+
+  /api/v1/customers/{id}/payment-methods:
+    get:
+      tags: [Payment Methods]
+      summary: Get payment methods
+      operationId: getPaymentMethods
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment methods list
+
+  /api/v1/customers/{id}/payment-methods/{methodId}:
+    delete:
+      tags: [Payment Methods]
+      summary: Delete payment method
+      operationId: deletePaymentMethod
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: methodId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment method deleted
+
+  /api/v1/customers/segments:
+    get:
+      tags: [Segments]
+      summary: List segments
+      operationId: listSegments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Segments list
+    post:
+      tags: [Segments]
+      summary: Create segment
+      operationId: createSegment
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Segment created
+
+  /api/v1/customers/segments/{id}:
+    get:
+      tags: [Segments]
+      summary: Get segment
+      operationId: getSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment details
+    put:
+      tags: [Segments]
+      summary: Update segment
+      operationId: updateSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment updated
+    delete:
+      tags: [Segments]
+      summary: Delete segment
+      operationId: deleteSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment deleted
+
+  /api/v1/customers/segments/{id}/customers:
+    get:
+      tags: [Segments]
+      summary: Get segment customers
+      operationId: getSegmentCustomers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Segment customers
+    post:
+      tags: [Segments]
+      summary: Add customers to segment
+      operationId: addCustomersToSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customers added
+    delete:
+      tags: [Segments]
+      summary: Remove customers from segment
+      operationId: removeCustomersFromSegment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customers removed
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  products-service:
+    build: .
+    container_name: tesseract-products-service
+    ports:
+      - "8087:8087"
+    environment:
+      - DB_HOST=products-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=products_db
+      - DB_SSL_MODE=disable
+      - PORT=8087
+      - ENVIRONMENT=development
+      - JWT_SECRET=your-secret-key-for-products
+      - MEDIA_SERVICE_URL=http://localhost:8091
+      - SEARCH_SERVICE_URL=http://localhost:8092
+      - ML_SERVICE_URL=http://localhost:8090
+      - DEFAULT_PAGE_SIZE=20
+      - MAX_PAGE_SIZE=100
+      - MAX_PRODUCT_IMAGES=20
+      - MAX_PRODUCT_VARIANTS=100
+      - MAX_PRODUCT_ATTRIBUTES=50
+      - DEFAULT_CURRENCY=USD
+      - AUTO_APPROVAL_ENABLED=false
+      - INVENTORY_TRACKING=true
+      - ALLOW_BACKORDERS=false
+    depends_on:
+      products-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tesseract-network
+    volumes:
+      - ./migrations:/app/migrations
+
+  products-db:
+    image: postgres:15-alpine
+    container_name: tesseract-products-db
+    environment:
+      - POSTGRES_DB=products_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5438:5432"  # Different port to avoid conflicts
+    volumes:
+      - products_db_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - tesseract-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d products_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  products_db_data:
+
+networks:
+  tesseract-network:
+    external: true

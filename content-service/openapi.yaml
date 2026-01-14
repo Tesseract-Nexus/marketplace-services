@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Content Service API
+  description: Content page management with SEO and publishing workflows
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Content Pages
+  - name: Publishing
+  - name: Navigation
+
+paths:
+  /api/v1/content-pages:
+    post:
+      tags: [Content Pages]
+      summary: Create content page
+      operationId: createContentPage
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Page created
+    get:
+      tags: [Content Pages]
+      summary: List content pages
+      operationId: listContentPages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [STATIC, BLOG, FAQ, POLICY, LANDING, CUSTOM]
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [DRAFT, PUBLISHED, ARCHIVED]
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: isFeatured
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Content pages list
+
+  /api/v1/content-pages/{id}:
+    get:
+      tags: [Content Pages]
+      summary: Get content page
+      operationId: getContentPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Content page details
+    put:
+      tags: [Content Pages]
+      summary: Update content page
+      operationId: updateContentPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Page updated
+    delete:
+      tags: [Content Pages]
+      summary: Delete content page
+      operationId: deleteContentPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Page deleted
+
+  /api/v1/content-pages/slug/{slug}:
+    get:
+      tags: [Content Pages]
+      summary: Get page by slug
+      operationId: getContentPageBySlug
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: trackView
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Content page details
+
+  /api/v1/content-pages/{id}/publish:
+    post:
+      tags: [Publishing]
+      summary: Publish page
+      operationId: publishContentPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Page published
+
+  /api/v1/content-pages/{id}/unpublish:
+    post:
+      tags: [Publishing]
+      summary: Unpublish page
+      operationId: unpublishContentPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Page unpublished
+
+  /api/v1/content-pages/stats:
+    get:
+      tags: [Content Pages]
+      summary: Get content statistics
+      operationId: getContentPageStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Content statistics
+
+  /api/v1/content-pages/menu-pages:
+    get:
+      tags: [Navigation]
+      summary: Get menu pages
+      operationId: getMenuPages
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Menu pages
+
+  /api/v1/content-pages/footer-pages:
+    get:
+      tags: [Navigation]
+      summary: Get footer pages
+      operationId: getFooterPages
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Footer pages
+
+  /api/v1/content-pages/featured-pages:
+    get:
+      tags: [Navigation]
+      summary: Get featured pages
+      operationId: getFeaturedPages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Featured pages
+
+  /api/v1/content-pages/generate-slug:
+    post:
+      tags: [Content Pages]
+      summary: Generate unique slug
+      operationId: generateSlug
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Generated slug
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: coupons-service-postgres
+    environment:
+      POSTGRES_DB: coupons_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/
+    networks:
+      - coupons-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d coupons_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  coupons-service:
+    build: .
+    container_name: coupons-service-api
+    ports:
+      - "8082:8082"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=coupons_db
+      - DB_SSL_MODE=disable
+      - PORT=8082
+      - ENVIRONMENT=development
+      - JWT_SECRET=your-jwt-secret-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - coupons-network
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:latest
+    container_name: coupons-service-migrate
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:password@postgres:5432/coupons_db?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - coupons-network
+
+networks:
+  coupons-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

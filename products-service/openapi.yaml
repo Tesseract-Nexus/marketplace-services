@@ -1,0 +1,518 @@
+openapi: 3.0.3
+info:
+  title: Products Service API
+  description: Product catalog management with variants, inventory, and search
+  version: 1.0.0
+servers:
+  - url: http://localhost:8087
+    description: Local development
+tags:
+  - name: Products
+  - name: Variants
+  - name: Inventory
+  - name: Images
+  - name: Categories
+  - name: Search
+  - name: Analytics
+
+paths:
+  /api/v1/products:
+    get:
+      tags: [Products]
+      summary: List products
+      operationId: listProducts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, archived]
+        - name: category_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Products list
+    post:
+      tags: [Products]
+      summary: Create product
+      operationId: createProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product created
+
+  /api/v1/products/{id}:
+    get:
+      tags: [Products]
+      summary: Get product
+      operationId: getProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product details
+    put:
+      tags: [Products]
+      summary: Update product
+      operationId: updateProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product updated
+    delete:
+      tags: [Products]
+      summary: Delete product
+      operationId: deleteProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product deleted
+
+  /api/v1/products/{id}/status:
+    put:
+      tags: [Products]
+      summary: Update product status
+      operationId: updateProductStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/v1/products/bulk/status:
+    post:
+      tags: [Products]
+      summary: Bulk update product status
+      operationId: bulkUpdateStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statuses updated
+
+  /api/v1/products/{id}/variants:
+    get:
+      tags: [Variants]
+      summary: List product variants
+      operationId: listVariants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Variants list
+    post:
+      tags: [Variants]
+      summary: Create variant
+      operationId: createVariant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Variant created
+
+  /api/v1/products/{id}/variants/{variantId}:
+    put:
+      tags: [Variants]
+      summary: Update variant
+      operationId: updateVariant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Variant updated
+    delete:
+      tags: [Variants]
+      summary: Delete variant
+      operationId: deleteVariant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Variant deleted
+
+  /api/v1/products/{id}/inventory:
+    put:
+      tags: [Inventory]
+      summary: Update inventory
+      operationId: updateInventory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Inventory updated
+
+  /api/v1/products/{id}/inventory/adjustment:
+    post:
+      tags: [Inventory]
+      summary: Adjust inventory
+      operationId: adjustInventory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Inventory adjusted
+
+  /api/v1/products/bulk/deduct:
+    post:
+      tags: [Inventory]
+      summary: Bulk deduct inventory
+      operationId: bulkDeductInventory
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Inventory deducted
+
+  /api/v1/products/bulk/restore:
+    post:
+      tags: [Inventory]
+      summary: Bulk restore inventory
+      operationId: bulkRestoreInventory
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Inventory restored
+
+  /api/v1/products/inventory/check:
+    post:
+      tags: [Inventory]
+      summary: Check stock availability
+      operationId: checkStock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Stock availability
+
+  /api/v1/products/images/upload:
+    post:
+      tags: [Images]
+      summary: Upload product images
+      operationId: uploadImages
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Images uploaded
+
+  /api/v1/products/{id}/images:
+    get:
+      tags: [Images]
+      summary: Get product images
+      operationId: getProductImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product images
+
+  /api/v1/products/{id}/images/presigned-url:
+    post:
+      tags: [Images]
+      summary: Generate presigned URL for upload
+      operationId: generatePresignedUrl
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Presigned URL
+
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      summary: List categories
+      operationId: listCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Categories list
+    post:
+      tags: [Categories]
+      summary: Create category
+      operationId: createCategory
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Category created
+
+  /api/v1/products/categories/{categoryId}:
+    get:
+      tags: [Categories]
+      summary: Get products by category
+      operationId: getProductsByCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Products in category
+
+  /api/v1/products/search:
+    post:
+      tags: [Search]
+      summary: Advanced product search
+      operationId: searchProducts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Search results
+
+  /api/v1/products/trending:
+    get:
+      tags: [Search]
+      summary: Get trending products
+      operationId: getTrendingProducts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Trending products
+
+  /api/v1/products/search/suggestions:
+    get:
+      tags: [Search]
+      summary: Get search suggestions
+      operationId: getSearchSuggestions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Search suggestions
+
+  /api/v1/products/available-filters:
+    get:
+      tags: [Search]
+      summary: Get available search filters
+      operationId: getAvailableFilters
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Available filters
+
+  /api/v1/products/search/track:
+    post:
+      tags: [Search]
+      summary: Track search events
+      operationId: trackSearch
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Event tracked
+
+  /api/v1/products/search/analytics:
+    get:
+      tags: [Search]
+      summary: Get search analytics
+      operationId: getSearchAnalytics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Search analytics
+
+  /api/v1/products/analytics:
+    get:
+      tags: [Analytics]
+      summary: Get product analytics
+      operationId: getProductAnalytics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Product analytics
+
+  /api/v1/products/stats:
+    get:
+      tags: [Analytics]
+      summary: Get product statistics
+      operationId: getProductStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Product statistics
+
+  /api/v1/products/export:
+    post:
+      tags: [Analytics]
+      summary: Export products
+      operationId: exportProducts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Export initiated
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ProductInput:
+      type: object
+      required: [name, price]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        compare_at_price:
+          type: number
+        cost_price:
+          type: number
+        sku:
+          type: string
+        barcode:
+          type: string
+        category_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, active, archived]
+        track_inventory:
+          type: boolean
+        quantity:
+          type: integer

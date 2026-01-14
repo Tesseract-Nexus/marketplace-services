@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Categories Service API
+  description: Hierarchical product category management
+  version: 1.0.0
+servers:
+  - url: http://localhost:8083
+    description: Local development
+tags:
+  - name: Categories
+  - name: Bulk Operations
+  - name: Analytics
+
+paths:
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      summary: List categories
+      operationId: listCategories
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: parent_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, pending, approved, rejected]
+      responses:
+        '200':
+          description: Categories list
+    post:
+      tags: [Categories]
+      summary: Create category
+      operationId: createCategory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          description: Category created
+
+  /api/v1/categories/{id}:
+    get:
+      tags: [Categories]
+      summary: Get category
+      operationId: getCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category details
+    put:
+      tags: [Categories]
+      summary: Update category
+      operationId: updateCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category updated
+    delete:
+      tags: [Categories]
+      summary: Delete category
+      operationId: deleteCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category deleted
+
+  /api/v1/categories/{id}/status:
+    put:
+      tags: [Categories]
+      summary: Update category status
+      operationId: updateCategoryStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated
+
+  /api/v1/categories/tree:
+    get:
+      tags: [Categories]
+      summary: Get category tree
+      operationId: getCategoryTree
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Hierarchical category tree
+
+  /api/v1/categories/reorder:
+    post:
+      tags: [Categories]
+      summary: Reorder categories
+      operationId: reorderCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Categories reordered
+
+  /api/v1/categories/{id}/audit:
+    get:
+      tags: [Categories]
+      summary: Get audit trail
+      operationId: getCategoryAudit
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Audit trail
+
+  /api/v1/categories/bulk:
+    post:
+      tags: [Bulk Operations]
+      summary: Bulk create categories
+      operationId: bulkCreateCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Categories created
+    put:
+      tags: [Bulk Operations]
+      summary: Bulk update categories
+      operationId: bulkUpdateCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Categories updated
+    delete:
+      tags: [Bulk Operations]
+      summary: Bulk delete categories
+      operationId: bulkDeleteCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Categories deleted
+
+  /api/v1/categories/export:
+    post:
+      tags: [Analytics]
+      summary: Export categories
+      operationId: exportCategories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Export initiated
+
+  /api/v1/categories/analytics:
+    get:
+      tags: [Analytics]
+      summary: Get category analytics
+      operationId: getCategoryAnalytics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Analytics data
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Ready
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parent_id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        status:
+          type: string
+          enum: [draft, pending, approved]
+        seo_title:
+          type: string
+        seo_description:
+          type: string
+        image_url:
+          type: string
