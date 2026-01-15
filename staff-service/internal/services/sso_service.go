@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,7 +188,7 @@ func (s *SSOService) ConfigureEntra(ctx context.Context, tenantID string, req mo
 	// Record the secret in tenant_secrets registry
 	if err := s.recordSecret(ctx, tenantID, storedSecret, "Microsoft Entra client secret", updatedBy); err != nil {
 		// Log but don't fail - main operation succeeded
-		fmt.Printf("Warning: failed to record secret in registry: %v\n", err)
+		log.Printf("[SSOService] Warning: failed to record secret in registry: %v", err)
 	}
 
 	return nil
@@ -293,7 +295,92 @@ func (s *SSOService) ConfigureOkta(ctx context.Context, tenantID string, req mod
 
 	// Record the secret in tenant_secrets registry
 	if err := s.recordSecret(ctx, tenantID, storedSecret, "Okta client secret", updatedBy); err != nil {
-		fmt.Printf("Warning: failed to record secret in registry: %v\n", err)
+		log.Printf("[SSOService] Warning: failed to record secret in registry: %v", err)
+	}
+
+	return nil
+}
+
+// ConfigureGoogle configures Google OAuth SSO for a tenant
+func (s *SSOService) ConfigureGoogle(ctx context.Context, tenantID string, req models.GoogleConfigRequest, updatedBy string) error {
+	config, err := s.GetSSOConfig(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Store client secret in GCP Secret Manager
+	secretMetadata := secrets.SecretMetadata{
+		TenantID:   tenantID,
+		SecretType: secrets.SecretTypeSSO,
+		Provider:   secrets.ProviderGoogle,
+		SecretName: "client-secret",
+	}
+
+	storedSecret, err := s.secretsClient.CreateSecret(ctx, secretMetadata, req.ClientSecret)
+	if err != nil {
+		return fmt.Errorf("failed to store client secret: %w", err)
+	}
+
+	// Build KeyCloak IdP alias
+	idpAlias := auth.BuildIdPAlias(tenantID, "google")
+
+	// Create or update KeyCloak IdP
+	idpConfig := auth.BuildGoogleConfig(
+		idpAlias,
+		"Google",
+		req.ClientID,
+		req.ClientSecret, // KeyCloak needs the actual secret
+	)
+
+	existingIdP, err := s.keycloakAdmin.GetIdentityProvider(ctx, idpAlias)
+	if err != nil {
+		return fmt.Errorf("failed to check existing IdP: %w", err)
+	}
+
+	if existingIdP != nil {
+		if err := s.keycloakAdmin.UpdateIdentityProvider(ctx, idpAlias, idpConfig); err != nil {
+			return fmt.Errorf("failed to update KeyCloak IdP: %w", err)
+		}
+	} else {
+		if err := s.keycloakAdmin.CreateIdentityProvider(ctx, idpConfig); err != nil {
+			return fmt.Errorf("failed to create KeyCloak IdP: %w", err)
+		}
+	}
+
+	// Update database
+	config.GoogleEnabled = req.Enabled
+	config.GoogleClientID = &req.ClientID
+	config.GoogleClientSecretRef = &storedSecret.GCPSecretID
+	config.KeycloakGoogleIdPAlias = &idpAlias
+	config.KeycloakFederationEnabled = true
+	now := time.Now()
+	config.KeycloakLastSyncAt = &now
+	config.UpdatedBy = &updatedBy
+	config.UpdatedAt = now
+
+	// Store allowed domains if provided
+	if len(req.AllowedDomains) > 0 {
+		domains := models.JSONArray(req.AllowedDomains)
+		config.GoogleAllowedDomains = &domains
+	}
+
+	if config.ID == uuid.Nil {
+		config.ID = uuid.New()
+		config.TenantID = tenantID
+		config.CreatedAt = now
+		config.CreatedBy = &updatedBy
+		if err := s.db.WithContext(ctx).Create(config).Error; err != nil {
+			return fmt.Errorf("failed to create SSO config: %w", err)
+		}
+	} else {
+		if err := s.db.WithContext(ctx).Save(config).Error; err != nil {
+			return fmt.Errorf("failed to update SSO config: %w", err)
+		}
+	}
+
+	// Record the secret in tenant_secrets registry
+	if err := s.recordSecret(ctx, tenantID, storedSecret, "Google OAuth client secret", updatedBy); err != nil {
+		log.Printf("[SSOService] Warning: failed to record secret in registry: %v", err)
 	}
 
 	return nil
@@ -351,7 +438,7 @@ func (s *SSOService) RemoveProvider(ctx context.Context, tenantID, provider, upd
 	// Delete secret from GCP Secret Manager
 	if secretRef != nil && *secretRef != "" {
 		if err := s.secretsClient.DeleteSecret(ctx, *secretRef); err != nil {
-			fmt.Printf("Warning: failed to delete secret: %v\n", err)
+			log.Printf("[SSOService] Warning: failed to delete secret: %v", err)
 		}
 	}
 
@@ -488,8 +575,12 @@ func (s *SSOService) EnableSCIM(ctx context.Context, tenantID, updatedBy string)
 		return nil, fmt.Errorf("failed to store SCIM token: %w", err)
 	}
 
-	// Generate SCIM endpoint
-	scimEndpoint := fmt.Sprintf("https://api.tesserix.app/scim/v2/%s", tenantID)
+	// Generate SCIM endpoint using configurable base URL
+	apiBaseURL := os.Getenv("API_BASE_URL")
+	if apiBaseURL == "" {
+		apiBaseURL = "https://api.tesserix.app"
+	}
+	scimEndpoint := fmt.Sprintf("%s/scim/v2/%s", apiBaseURL, tenantID)
 
 	// Update config
 	config.SCIMEnabled = true
@@ -516,7 +607,7 @@ func (s *SSOService) EnableSCIM(ctx context.Context, tenantID, updatedBy string)
 
 	// Record the secret
 	if err := s.recordSecret(ctx, tenantID, storedSecret, "SCIM bearer token", updatedBy); err != nil {
-		fmt.Printf("Warning: failed to record secret in registry: %v\n", err)
+		log.Printf("[SSOService] Warning: failed to record secret in registry: %v", err)
 	}
 
 	return &models.SCIMTokenResponse{
@@ -579,7 +670,7 @@ func (s *SSOService) DisableSCIM(ctx context.Context, tenantID, updatedBy string
 	if config.SCIMBearerTokenRef != nil {
 		secretName := secrets.BuildSecretName(tenantID, secrets.SecretTypeSCIM, secrets.ProviderSCIM, "bearer-token")
 		if err := s.secretsClient.DeleteSecret(ctx, secretName); err != nil {
-			fmt.Printf("Warning: failed to delete SCIM token: %v\n", err)
+			log.Printf("[SSOService] Warning: failed to delete SCIM token: %v", err)
 		}
 	}
 

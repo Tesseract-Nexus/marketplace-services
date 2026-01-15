@@ -33,6 +33,7 @@ func (h *SSOHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		// Provider management
 		sso.POST("/providers/entra", h.ConfigureEntra)
 		sso.POST("/providers/okta", h.ConfigureOkta)
+		sso.POST("/providers/google", h.ConfigureGoogle)
 		sso.DELETE("/providers/:provider", h.RemoveProvider)
 		sso.POST("/providers/:provider/test", h.TestProvider)
 
@@ -290,6 +291,62 @@ func (h *SSOHandler) ConfigureOkta(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Okta SSO configured successfully",
+	})
+}
+
+// ConfigureGoogle configures Google OAuth SSO
+// @Summary Configure Google OAuth SSO
+// @Tags SSO
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body models.GoogleConfigRequest true "Google config"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/sso/providers/google [post]
+func (h *SSOHandler) ConfigureGoogle(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	userID := c.GetString("user_id")
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required",
+			},
+		})
+		return
+	}
+
+	var req models.GoogleConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_REQUEST",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
+
+	if err := h.ssoService.ConfigureGoogle(c.Request.Context(), tenantID, req, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "GOOGLE_CONFIG_ERROR",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Google OAuth SSO configured successfully",
 	})
 }
 

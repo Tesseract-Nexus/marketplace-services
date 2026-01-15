@@ -445,6 +445,14 @@ type EntraConfigRequest struct {
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
 }
 
+// GoogleConfigRequest represents Google OAuth SSO configuration request
+type GoogleConfigRequest struct {
+	Enabled        bool     `json:"enabled"`
+	ClientID       string   `json:"clientId" binding:"required"`
+	ClientSecret   string   `json:"clientSecret" binding:"required"`
+	AllowedDomains []string `json:"allowedDomains,omitempty"` // Optional domain restrictions (e.g., ["company.com"])
+}
+
 // SCIMConfigRequest represents SCIM provisioning configuration request
 type SCIMConfigRequest struct {
 	Enabled             bool  `json:"enabled"`

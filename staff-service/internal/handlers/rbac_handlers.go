@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,20 +49,26 @@ func NewRBACHandlerWithCache(repo repository.RBACRepository, staffRepo repositor
 }
 
 // PERF-001: Helper to invalidate cache for a staff member after permission changes
+// FIX: Made synchronous with timeout to prevent race conditions where stale permissions could be used
 func (h *RBACHandler) invalidateStaffCache(tenantID string, vendorID *string, staffID uuid.UUID) {
 	if h.permCache != nil {
-		go func() {
-			_ = h.permCache.Invalidate(context.Background(), tenantID, vendorID, staffID)
-		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		if err := h.permCache.Invalidate(ctx, tenantID, vendorID, staffID); err != nil {
+			log.Printf("[RBAC] Warning: cache invalidation failed for staff %s: %v", staffID, err)
+		}
 	}
 }
 
 // PERF-001: Helper to invalidate all cached permissions for a tenant (used on role/permission changes)
+// FIX: Made synchronous with timeout to prevent race conditions where stale permissions could be used
 func (h *RBACHandler) invalidateTenantCache(tenantID string) {
 	if h.permCache != nil {
-		go func() {
-			_ = h.permCache.InvalidateAll(context.Background(), tenantID)
-		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		if err := h.permCache.InvalidateAll(ctx, tenantID); err != nil {
+			log.Printf("[RBAC] Warning: tenant cache invalidation failed for %s: %v", tenantID, err)
+		}
 	}
 }
 
@@ -126,7 +133,7 @@ func (h *RBACHandler) syncKeycloakRoles(c *gin.Context, tenantID string, vendorI
 	// Get current role assignments
 	currentAssignments, err := h.repo.GetStaffRoles(tenantID, vendorID, staffID)
 	if err != nil {
-		fmt.Printf("[syncKeycloakRoles] Failed to get current roles: %v\n", err)
+		log.Printf("[syncKeycloakRoles] Failed to get current roles: %v", err)
 		return
 	}
 
@@ -153,7 +160,7 @@ func (h *RBACHandler) syncKeycloakRoles(c *gin.Context, tenantID string, vendorI
 		// Find the role in staff-service
 		role, err := h.repo.GetRoleByName(tenantID, vendorID, staffServiceRole)
 		if err != nil || role == nil {
-			fmt.Printf("[syncKeycloakRoles] Role %s not found in tenant %s\n", staffServiceRole, tenantID)
+			log.Printf("[syncKeycloakRoles] Role %s not found in tenant %s", staffServiceRole, tenantID)
 			continue
 		}
 
@@ -167,9 +174,9 @@ func (h *RBACHandler) syncKeycloakRoles(c *gin.Context, tenantID string, vendorI
 		}
 
 		if err := h.repo.AssignRole(tenantID, vendorID, assignment); err != nil {
-			fmt.Printf("[syncKeycloakRoles] Failed to assign role %s: %v\n", staffServiceRole, err)
+			log.Printf("[syncKeycloakRoles] Failed to assign role %s: %v", staffServiceRole, err)
 		} else {
-			fmt.Printf("[syncKeycloakRoles] Assigned role %s to staff %s from Keycloak\n", staffServiceRole, staffID)
+			log.Printf("[syncKeycloakRoles] Assigned role %s to staff %s from Keycloak", staffServiceRole, staffID)
 			// Invalidate cache after role change
 			h.invalidateStaffCache(tenantID, vendorID, staffID)
 		}
@@ -1252,7 +1259,7 @@ func (h *RBACHandler) SeedVendorRoles(c *gin.Context) {
 		return
 	}
 
-	fmt.Printf("[SeedVendorRoles] Seeded vendor roles for vendor %s in tenant %s\n", req.VendorID, tenantID)
+	log.Printf("[SeedVendorRoles] Seeded vendor roles for vendor %s in tenant %s", req.VendorID, tenantID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
@@ -1732,7 +1739,7 @@ func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 			staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
 			if staffByEmail != nil {
 				staffID = staffByEmail.ID
-				fmt.Printf("[GetStaffEffectivePermissions] Found staff by email %s: %s (requested ID: %s)\n", userEmail, staffID, staffIDStr)
+				log.Printf("[GetStaffEffectivePermissions] Found staff by email %s: %s (requested ID: %s)", userEmail, staffID, staffIDStr)
 			}
 		}
 	}
@@ -1799,7 +1806,7 @@ func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 			staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
 			if staffByEmail != nil {
 				staffID = staffByEmail.ID
-				fmt.Printf("[GetMyEffectivePermissions] Found staff by email %s: %s (auth user: %s)\n", userEmail, staffID, userID)
+				log.Printf("[GetMyEffectivePermissions] Found staff by email %s: %s (auth user: %s)", userEmail, staffID, userID)
 			}
 		}
 	}
@@ -2040,15 +2047,15 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 	// Step 1: Seed default roles for the tenant (idempotent)
 	// CRITICAL: If this fails and roles don't exist, owner won't have permissions
 	if err := h.repo.SeedDefaultRoles(tenantID, nil); err != nil {
-		fmt.Printf("[BootstrapOwner] Warning: SeedDefaultRoles returned error for tenant %s: %v\n", tenantID, err)
+		log.Printf("[BootstrapOwner] Warning: SeedDefaultRoles returned error for tenant %s: %v", tenantID, err)
 	} else {
-		fmt.Printf("[BootstrapOwner] Seeded default roles for tenant %s\n", tenantID)
+		log.Printf("[BootstrapOwner] Seeded default roles for tenant %s", tenantID)
 	}
 
 	// Verify that owner role exists (regardless of seed error - handles partial seeding)
 	roles, _, checkErr := h.repo.ListRoles(tenantID, nil, 1, 100)
 	if checkErr != nil {
-		fmt.Printf("[BootstrapOwner] CRITICAL: Failed to verify roles exist for tenant %s: %v\n", tenantID, checkErr)
+		log.Printf("[BootstrapOwner] CRITICAL: Failed to verify roles exist for tenant %s: %v", tenantID, checkErr)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
 			Error:   models.Error{Code: "ROLES_CHECK_FAILED", Message: "Failed to verify roles: " + checkErr.Error()},
@@ -2065,7 +2072,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 		}
 	}
 	if ownerRoleID == uuid.Nil {
-		fmt.Printf("[BootstrapOwner] CRITICAL: Owner role not found after seeding for tenant %s\n", tenantID)
+		log.Printf("[BootstrapOwner] CRITICAL: Owner role not found after seeding for tenant %s", tenantID)
 		// Try to re-seed roles and fetch again
 		if retryErr := h.repo.SeedDefaultRoles(tenantID, nil); retryErr != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -2074,7 +2081,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 			})
 			return
 		}
-		fmt.Printf("[BootstrapOwner] Re-seeded roles for tenant %s\n", tenantID)
+		log.Printf("[BootstrapOwner] Re-seeded roles for tenant %s", tenantID)
 		// Fetch roles again after re-seeding
 		roles, _, checkErr = h.repo.ListRoles(tenantID, nil, 1, 100)
 		if checkErr != nil {
@@ -2111,7 +2118,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 	if existingStaff != nil {
 		// Staff already exists in this tenant, use their ID
 		staffID = existingStaff.ID
-		fmt.Printf("[BootstrapOwner] Staff already exists for user %s in tenant %s (staff ID: %s)\n", req.UserID, tenantID, staffID)
+		log.Printf("[BootstrapOwner] Staff already exists for user %s in tenant %s (staff ID: %s)", req.UserID, tenantID, staffID)
 
 		// SEC-003: Update keycloak_user_id if not already set
 		// This ensures existing owners can be linked to their Keycloak identity for RBAC
@@ -2119,7 +2126,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 			keycloakUserID := req.UserID
 			existingStaff.KeycloakUserID = &keycloakUserID
 			h.staffRepo.CreateOrUpdate(tenantID, existingStaff)
-			fmt.Printf("[BootstrapOwner] Updated keycloak_user_id for staff %s\n", staffID)
+			log.Printf("[BootstrapOwner] Updated keycloak_user_id for staff %s", staffID)
 		}
 	} else {
 		// Staff doesn't exist in this tenant - need to create
@@ -2129,7 +2136,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 			// Staff exists in a different tenant - we need to generate a new ID for this tenant
 			// This handles the multi-tenant scenario where one user owns multiple stores
 			staffID = uuid.New()
-			fmt.Printf("[BootstrapOwner] User %s has staff record in another tenant (%s), creating new staff ID %s for tenant %s\n",
+			log.Printf("[BootstrapOwner] User %s has staff record in another tenant (%s), creating new staff ID %s for tenant %s",
 				req.UserID, globalStaff.TenantID, staffID, tenantID)
 		} else {
 			// Use the auth user ID as the staff ID (preferred for single-tenant users)
@@ -2160,7 +2167,7 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 			})
 			return
 		}
-		fmt.Printf("[BootstrapOwner] Created staff record for owner %s (ID: %s) in tenant %s\n", req.Email, staffID, tenantID)
+		log.Printf("[BootstrapOwner] Created staff record for owner %s (ID: %s) in tenant %s", req.Email, staffID, tenantID)
 	}
 
 	// Step 3: Check if owner role is already assigned
@@ -2191,9 +2198,9 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 			})
 			return
 		}
-		fmt.Printf("[BootstrapOwner] Assigned Owner role to staff %s in tenant %s\n", staffID, tenantID)
+		log.Printf("[BootstrapOwner] Assigned Owner role to staff %s in tenant %s", staffID, tenantID)
 	} else {
-		fmt.Printf("[BootstrapOwner] Owner role already assigned to staff %s\n", staffID)
+		log.Printf("[BootstrapOwner] Owner role already assigned to staff %s", staffID)
 	}
 
 	// Step 5: Invalidate permission cache

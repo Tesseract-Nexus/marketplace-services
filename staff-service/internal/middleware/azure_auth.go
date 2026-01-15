@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -201,10 +203,32 @@ func getAzureADPublicKey(tenantID, kid string) (*rsa.PublicKey, error) {
 
 // parseRSAPublicKeyFromJWK parses RSA public key from JWK
 func parseRSAPublicKeyFromJWK(key JSONWebKey) (*rsa.PublicKey, error) {
-	// TODO: Implement proper JWK parsing using go-jose library
-	// For now, return error to use development mode
-	// go get github.com/go-jose/go-jose/v3
-	return nil, fmt.Errorf("JWK parsing requires go-jose library - falling back to development auth")
+	if key.Kty != "RSA" || key.N == "" || key.E == "" {
+		return nil, fmt.Errorf("invalid RSA JWK")
+	}
+
+	modulusBytes, err := base64.RawURLEncoding.DecodeString(key.N)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWK modulus: %w", err)
+	}
+
+	exponentBytes, err := base64.RawURLEncoding.DecodeString(key.E)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWK exponent: %w", err)
+	}
+
+	exponent := 0
+	for _, b := range exponentBytes {
+		exponent = exponent*256 + int(b)
+	}
+	if exponent == 0 {
+		return nil, fmt.Errorf("invalid JWK exponent")
+	}
+
+	return &rsa.PublicKey{
+		N: new(big.Int).SetBytes(modulusBytes),
+		E: exponent,
+	}, nil
 }
 
 // getEmailFromClaims extracts email from claims with fallback
