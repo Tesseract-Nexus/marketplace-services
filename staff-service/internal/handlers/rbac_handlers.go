@@ -17,16 +17,19 @@ import (
 )
 
 // KeycloakRoleMapping maps Keycloak realm role names to staff-service role names
+// FIX-HIGH-003: Changed to use role slugs instead of display names.
+// Roles in the database are stored with `name` as slug (e.g., "store_owner"),
+// not display name (e.g., "Store Owner"). GetRoleByName queries by the `name` field.
 var keycloakRoleMapping = map[string]string{
-	"store_owner":          "Store Owner",
-	"store_admin":          "Store Admin",
-	"store_manager":        "Store Manager",
-	"marketing_specialist": "Marketing Specialist",
-	"inventory_specialist": "Inventory Specialist",
-	"order_specialist":     "Order Specialist",
-	"customer_support":     "Customer Support",
-	"viewer":               "Viewer",
-	"platform_owner":       "Platform Owner",
+	"store_owner":          "store_owner",
+	"store_admin":          "store_admin",
+	"store_manager":        "store_manager",
+	"marketing_specialist": "marketing_specialist",
+	"inventory_specialist": "inventory_specialist",
+	"order_specialist":     "order_specialist",
+	"customer_support":     "customer_support",
+	"viewer":               "viewer",
+	"platform_owner":       "platform_owner",
 }
 
 type RBACHandler struct {

@@ -153,8 +153,9 @@ func main() {
 	}
 
 	// Initialize handlers
-	// Use NewStaffHandlerWithAuth to enable auto-invitation on staff creation
-	staffHandler := handlers.NewStaffHandlerWithAuth(staffRepo, authRepo)
+	// Use NewStaffHandlerWithRBAC to enable auto-invitation and role assignment on staff creation
+	// FIX-CRITICAL-001: This ensures new staff members get a default role assignment
+	staffHandler := handlers.NewStaffHandlerWithRBAC(staffRepo, authRepo, rbacRepo)
 	documentHandler := handlers.NewDocumentHandler(cfg.DocumentServiceURL, cfg.ProductID)
 	rbacHandler := handlers.NewRBACHandlerWithCache(rbacRepo, staffRepo, permCache)
 	staffDocHandler := handlers.NewStaffDocumentHandler(docRepo, staffRepo)

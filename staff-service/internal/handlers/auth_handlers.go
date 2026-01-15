@@ -991,6 +991,44 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 	// Get SSO config
 	ssoConfig, _ := h.authRepo.GetSSOConfig(tenantID)
 
+	// FIX-HIGH-005: Validate auth method against tenant SSO policy
+	// Previously, activation didn't check if the auth method was allowed
+	switch req.AuthMethod {
+	case models.AuthMethodPassword:
+		if ssoConfig != nil && !ssoConfig.AllowPasswordAuth {
+			c.JSON(http.StatusForbidden, models.ErrorResponse{
+				Success: false,
+				Error: models.Error{
+					Code:    "AUTH_METHOD_DISABLED",
+					Message: "Password authentication is not enabled for this organization. Please use SSO.",
+				},
+			})
+			return
+		}
+	case models.AuthMethodGoogleSSO:
+		if ssoConfig == nil || !ssoConfig.GoogleEnabled {
+			c.JSON(http.StatusForbidden, models.ErrorResponse{
+				Success: false,
+				Error: models.Error{
+					Code:    "AUTH_METHOD_DISABLED",
+					Message: "Google SSO is not enabled for this organization.",
+				},
+			})
+			return
+		}
+	case models.AuthMethodMicrosoftSSO:
+		if ssoConfig == nil || !ssoConfig.MicrosoftEnabled {
+			c.JSON(http.StatusForbidden, models.ErrorResponse{
+				Success: false,
+				Error: models.Error{
+					Code:    "AUTH_METHOD_DISABLED",
+					Message: "Microsoft SSO is not enabled for this organization.",
+				},
+			})
+			return
+		}
+	}
+
 	// Process based on auth method
 	switch req.AuthMethod {
 	case models.AuthMethodPassword:
@@ -1242,6 +1280,42 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 		return
 	}
 
+	// FIX-HIGH-004: Get the invitation by ID first to get staff info for token regeneration
+	invitation, err := h.authRepo.GetInvitationByID(invitationID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVITATION_NOT_FOUND",
+				Message: "Invitation not found",
+			},
+		})
+		return
+	}
+
+	// Check invitation status - cannot resend accepted or revoked invitations
+	if invitation.Status == models.InvitationStatusAccepted {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVITATION_ACCEPTED",
+				Message: "Cannot resend an already accepted invitation",
+			},
+		})
+		return
+	}
+	if invitation.Status == models.InvitationStatusRevoked {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVITATION_REVOKED",
+				Message: "Cannot resend a revoked invitation",
+			},
+		})
+		return
+	}
+
+	// Update invitation (generates new invitation token and extends expiration)
 	if err := h.authRepo.ResendInvitation(invitationID); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
@@ -1253,10 +1327,40 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 		return
 	}
 
-	// Regenerate activation token
-	invitation, _ := h.authRepo.GetInvitationByToken("") // Need to get by ID
-	if invitation != nil {
-		_, _ = h.authRepo.GenerateActivationToken(tenantID, invitation.StaffID)
+	// FIX-HIGH-004: Regenerate activation token (this was broken - was calling GetInvitationByToken(""))
+	activationToken, err := h.authRepo.GenerateActivationToken(tenantID, invitation.StaffID)
+	if err != nil {
+		log.Printf("[AUTH] Failed to regenerate activation token for staff %s: %v", invitation.StaffID, err)
+		// Don't fail the request - invitation was already updated
+	}
+
+	// Send the invitation email with the new activation token
+	if h.notificationClient != nil && invitation.Staff != nil {
+		go func() {
+			// Get activation base URL from environment
+			var activationBaseURL string
+			if envHost := os.Getenv("ADMIN_HOST"); envHost != "" {
+				activationBaseURL = envHost
+			} else {
+				activationBaseURL = "https://admin.tesserix.app"
+			}
+			activationLink := fmt.Sprintf("%s/activate?token=%s", activationBaseURL, activationToken)
+
+			notification := &clients.StaffInvitationNotification{
+				TenantID:       tenantID,
+				StaffID:        invitation.StaffID.String(),
+				StaffEmail:     invitation.Staff.Email,
+				StaffName:      fmt.Sprintf("%s %s", invitation.Staff.FirstName, invitation.Staff.LastName),
+				Role:           string(invitation.Staff.Role),
+				InviterName:    "Your administrator",
+				ActivationLink: activationLink,
+			}
+			if err := h.notificationClient.SendStaffInvitation(context.Background(), notification); err != nil {
+				log.Printf("[AUTH] Failed to send resent invitation email to %s: %v", invitation.Staff.Email, err)
+			} else {
+				log.Printf("[AUTH] Resent invitation email to %s", invitation.Staff.Email)
+			}
+		}()
 	}
 
 	c.JSON(http.StatusOK, gin.H{

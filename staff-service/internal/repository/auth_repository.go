@@ -70,6 +70,7 @@ type AuthRepository interface {
 
 	// Invitation management
 	CreateInvitation(invitation *models.StaffInvitation) error
+	GetInvitationByID(invitationID uuid.UUID) (*models.StaffInvitation, error)
 	GetInvitationByToken(token string) (*models.StaffInvitation, error)
 	GetInvitationByStaffID(tenantID string, staffID uuid.UUID) (*models.StaffInvitation, error)
 	GetPendingInvitations(tenantID string) ([]models.StaffInvitation, error)
@@ -538,6 +539,22 @@ func (r *authRepository) CreateInvitation(invitation *models.StaffInvitation) er
 	return r.db.Create(invitation).Error
 }
 
+func (r *authRepository) GetInvitationByID(invitationID uuid.UUID) (*models.StaffInvitation, error) {
+	var invitation models.StaffInvitation
+	err := r.db.Where("id = ?", invitationID).
+		Preload("Staff").
+		First(&invitation).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrInvalidToken
+		}
+		return nil, err
+	}
+
+	return &invitation, nil
+}
+
 func (r *authRepository) GetInvitationByToken(token string) (*models.StaffInvitation, error) {
 	var invitation models.StaffInvitation
 	err := r.db.Where("invitation_token = ?", token).
@@ -639,7 +656,39 @@ func (r *authRepository) MarkInvitationAccepted(invitationID uuid.UUID) error {
 }
 
 func (r *authRepository) RevokeInvitation(invitationID uuid.UUID) error {
-	return r.UpdateInvitationStatus(invitationID, models.InvitationStatusRevoked)
+	// FIX-CRITICAL-002: When revoking an invitation, also invalidate the activation token
+	// on the staff record. Previously, a revoked invitation's activation token could still
+	// be used because VerifyActivationToken only checks the staff table, not invitation status.
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Get the invitation to find the staff ID
+		var invitation models.StaffInvitation
+		if err := tx.Where("id = ?", invitationID).First(&invitation).Error; err != nil {
+			return err
+		}
+
+		// Update invitation status to revoked
+		if err := tx.Model(&models.StaffInvitation{}).
+			Where("id = ?", invitationID).
+			Updates(map[string]interface{}{
+				"status":     models.InvitationStatusRevoked,
+				"updated_at": time.Now(),
+			}).Error; err != nil {
+			return err
+		}
+
+		// Clear the activation token from the staff record to prevent activation
+		if err := tx.Model(&models.Staff{}).
+			Where("id = ?", invitation.StaffID).
+			Updates(map[string]interface{}{
+				"activation_token":            nil,
+				"activation_token_expires_at": nil,
+				"updated_at":                  time.Now(),
+			}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (r *authRepository) ResendInvitation(invitationID uuid.UUID) error {

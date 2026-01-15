@@ -19,6 +19,7 @@ import (
 type StaffHandler struct {
 	repo               repository.StaffRepository
 	authRepo           repository.AuthRepository
+	rbacRepo           repository.RBACRepository
 	notificationClient *clients.NotificationClient
 }
 
@@ -31,6 +32,17 @@ func NewStaffHandlerWithAuth(repo repository.StaffRepository, authRepo repositor
 	return &StaffHandler{
 		repo:               repo,
 		authRepo:           authRepo,
+		notificationClient: clients.NewNotificationClient(),
+	}
+}
+
+// NewStaffHandlerWithRBAC creates a StaffHandler with auth and RBAC repositories
+// This enables auto-invitation and automatic role assignment on staff creation
+func NewStaffHandlerWithRBAC(repo repository.StaffRepository, authRepo repository.AuthRepository, rbacRepo repository.RBACRepository) *StaffHandler {
+	return &StaffHandler{
+		repo:               repo,
+		authRepo:           authRepo,
+		rbacRepo:           rbacRepo,
 		notificationClient: clients.NewNotificationClient(),
 	}
 }
@@ -167,13 +179,86 @@ func (h *StaffHandler) CreateStaff(c *gin.Context) {
 		return
 	}
 
+	// FIX-CRITICAL-001: Assign default role to new staff member
+	// RBAC permissions are derived from staff_role_assignments only, so staff without
+	// any role assignment will have zero effective permissions.
+	if h.rbacRepo != nil {
+		var roleAssigned bool
+		var assignedRoleName string
+
+		// Priority 1: Team's default role (if staff has a team with default role)
+		if staff.TeamUUID != nil {
+			team, err := h.rbacRepo.GetTeamByID(tenantID, &vendorID, *staff.TeamUUID)
+			if err == nil && team != nil && team.DefaultRoleID != nil {
+				assignment := &models.RoleAssignment{
+					StaffID:   staff.ID,
+					RoleID:    *team.DefaultRoleID,
+					IsPrimary: true,
+					Notes:     strPtr("Auto-assigned from team default role"),
+				}
+				if err := h.rbacRepo.AssignRole(tenantID, &vendorID, assignment); err == nil {
+					roleAssigned = true
+					if team.DefaultRole != nil {
+						assignedRoleName = team.DefaultRole.Name
+					}
+					log.Printf("[STAFF] Assigned team default role to staff %s", staff.ID)
+				}
+			}
+		}
+
+		// Priority 2: Fallback to "viewer" role (lowest privilege role)
+		if !roleAssigned {
+			viewerRole, err := h.rbacRepo.GetRoleByName(tenantID, &vendorID, "viewer")
+			if err == nil && viewerRole != nil {
+				assignment := &models.RoleAssignment{
+					StaffID:   staff.ID,
+					RoleID:    viewerRole.ID,
+					IsPrimary: true,
+					Notes:     strPtr("Auto-assigned default viewer role"),
+				}
+				if err := h.rbacRepo.AssignRole(tenantID, &vendorID, assignment); err == nil {
+					roleAssigned = true
+					assignedRoleName = viewerRole.Name
+					log.Printf("[STAFF] Assigned default viewer role to staff %s", staff.ID)
+				}
+			}
+		}
+
+		if !roleAssigned {
+			log.Printf("[STAFF] WARNING: Could not assign any role to new staff %s - they will have zero permissions", staff.ID)
+		} else {
+			log.Printf("[STAFF] Staff %s assigned role: %s", staff.ID, assignedRoleName)
+		}
+	}
+
 	// Auto-send invitation if authRepo is available
 	var invitationSent bool
 	var invitationToken string
 	if h.authRepo != nil {
+		// FIX-HIGH-005: Get SSO config to determine allowed auth methods
+		// Previously hardcoded to always allow password auth, which violated SSO-only policies
+		ssoConfig, _ := h.authRepo.GetSSOConfig(tenantID)
+
+		// Build auth options based on tenant SSO policy
+		authOptions := make(models.JSONArray, 0)
+		if ssoConfig == nil || ssoConfig.AllowPasswordAuth {
+			authOptions = append(authOptions, string(models.AuthMethodPassword))
+		}
+		if ssoConfig != nil && ssoConfig.GoogleEnabled {
+			authOptions = append(authOptions, string(models.AuthMethodGoogleSSO))
+		}
+		if ssoConfig != nil && ssoConfig.MicrosoftEnabled {
+			authOptions = append(authOptions, string(models.AuthMethodMicrosoftSSO))
+		}
+
+		// If no auth methods are available (misconfigured tenant), default to password
+		if len(authOptions) == 0 {
+			log.Printf("[STAFF] WARNING: Tenant %s has no auth methods configured, defaulting to password", tenantID)
+			authOptions = append(authOptions, string(models.AuthMethodPassword))
+		}
+
 		// Create invitation
 		senderUUID, _ := uuid.Parse(userID)
-		authOptions := models.JSONArray{string(models.AuthMethodPassword)}
 		invitation := &models.StaffInvitation{
 			TenantID:          tenantID,
 			VendorID:          &vendorID,
@@ -1049,4 +1134,9 @@ func (h *StaffHandler) SyncKeycloakUserIDInternal(c *gin.Context) {
 		"success": true,
 		"message": "Keycloak user ID synced successfully",
 	})
+}
+
+// strPtr returns a pointer to a string
+func strPtr(s string) *string {
+	return &s
 }
