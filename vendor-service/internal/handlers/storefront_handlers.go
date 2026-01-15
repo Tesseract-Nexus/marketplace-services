@@ -595,6 +595,50 @@ func (h *StorefrontHandler) ResolveByDomain(c *gin.Context) {
 	})
 }
 
+// GetStorefrontBySlug retrieves a storefront by its slug (internal API)
+// Used by tenant-service to resolve tenant from storefront slug
+// @Summary Get storefront by slug (internal)
+// @Description Get full storefront data by slug including tenant ID
+// @Tags Internal
+// @Produce json
+// @Param slug path string true "Storefront slug"
+// @Success 200 {object} models.StorefrontResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Router /internal/storefronts/by-slug/{slug} [get]
+func (h *StorefrontHandler) GetStorefrontBySlug(c *gin.Context) {
+	slug := c.Param("slug")
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "MISSING_SLUG",
+				Message: "Slug is required",
+			},
+		})
+		return
+	}
+
+	storefront, err := h.repo.GetBySlug(slug)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "NOT_FOUND",
+				Message: "Storefront not found",
+			},
+		})
+		return
+	}
+
+	// Compute the storefront URL before returning
+	storefront.ComputeStorefrontURL(h.storefrontDomain)
+
+	c.JSON(http.StatusOK, models.StorefrontResponse{
+		Success: true,
+		Data:    storefront,
+	})
+}
+
 // GetVendorStorefronts gets all storefronts for a specific vendor
 // @Summary Get vendor's storefronts
 // @Description Get all storefronts belonging to a vendor
