@@ -183,11 +183,6 @@ func (h *RBACHandler) syncKeycloakRoles(c *gin.Context, tenantID string, vendorI
 	}
 }
 
-// strPtr helper for creating string pointers
-func strPtr(s string) *string {
-	return &s
-}
-
 func (h *RBACHandler) getPagination(c *gin.Context) (int, int) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))

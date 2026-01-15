@@ -3,7 +3,7 @@ module staff-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260114152147-11cd2a14e96d
+	github.com/Tesseract-Nexus/go-shared v0.0.0-20260115121403-30126e2e5c42
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0

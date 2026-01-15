@@ -360,7 +360,11 @@ func (s *SSOService) ConfigureGoogle(ctx context.Context, tenantID string, req m
 
 	// Store allowed domains if provided
 	if len(req.AllowedDomains) > 0 {
-		domains := models.JSONArray(req.AllowedDomains)
+		// Convert []string to []interface{} for JSONArray
+		domains := make(models.JSONArray, len(req.AllowedDomains))
+		for i, d := range req.AllowedDomains {
+			domains[i] = d
+		}
 		config.GoogleAllowedDomains = &domains
 	}
 

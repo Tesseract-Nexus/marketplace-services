@@ -187,7 +187,7 @@ func main() {
 	// NOTE: Most auth functionality has moved to Keycloak + auth-bff.
 	// These routes are deprecated and disabled by default.
 	publicAuth := router.Group("/api/v1/auth")
-	publicAuth.Use(sharedMiddleware.RateLimit(sharedMiddleware.AuthRateLimitConfig())) // Rate limit auth endpoints
+	publicAuth.Use(sharedMiddleware.AuthRateLimit()) // Rate limit auth endpoints
 	publicAuth.Use(middleware.TenantMiddleware())                                      // Only extract tenant, no auth required
 	publicAuth.Use(middleware.VendorMiddleware())                                      // Extract vendor for marketplace isolation
 
@@ -232,7 +232,7 @@ func main() {
 
 	// Cross-tenant public routes (no tenant middleware - these lookup across all tenants)
 	crossTenantAuth := router.Group("/api/v1/auth")
-	crossTenantAuth.Use(sharedMiddleware.RateLimit(sharedMiddleware.AuthRateLimitConfig())) // Rate limit credential validation
+	crossTenantAuth.Use(sharedMiddleware.AuthRateLimit()) // Rate limit credential validation
 	{
 		// Staff tenant lookup for login (called by tenant-service)
 		// This endpoint looks up staff across ALL tenants, so no tenant ID required
