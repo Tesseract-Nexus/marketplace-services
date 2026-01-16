@@ -137,7 +137,7 @@ func main() {
 	istioAuthLogger := logrus.NewEntry(logrus.StandardLogger()).WithField("component", "istio_auth")
 	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true,
+		AllowLegacyHeaders: false,
 		Logger:             istioAuthLogger,
 	})
 

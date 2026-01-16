@@ -366,7 +366,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	// AllowLegacyHeaders provides backward compatibility during migration
 	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
 	{

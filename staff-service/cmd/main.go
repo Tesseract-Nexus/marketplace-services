@@ -269,7 +269,7 @@ func main() {
 	// AllowLegacyHeaders provides backward compatibility during migration
 	api.Use(sharedMiddleware.IstioAuth(sharedMiddleware.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
 

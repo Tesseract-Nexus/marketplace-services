@@ -157,7 +157,7 @@ func main() {
 	istioAuthLogger := logrus.NewEntry(logger).WithField("component", "istio_auth")
 	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-User-ID, X-Tenant-ID during migration
+		AllowLegacyHeaders: false,
 		Logger:             istioAuthLogger,
 	})
 
