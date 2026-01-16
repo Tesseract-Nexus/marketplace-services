@@ -228,10 +228,12 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 	// Authentication middleware using Istio JWT claims
 	// Istio validates JWT and injects x-jwt-claim-* headers
 	// AllowLegacyHeaders provides backward compatibility during migration
+	istioAuthLogger := log.WithField("component", "istio_auth")
 	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
 		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+		Logger:             istioAuthLogger,
 	}))
 
 	// Vendor routes with RBAC
