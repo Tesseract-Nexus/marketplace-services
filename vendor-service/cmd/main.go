@@ -236,6 +236,10 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 		Logger:             istioAuthLogger,
 	}))
 
+	// TenantMiddleware extracts tenant context and sets vendor_id for handlers
+	// Must run after IstioAuth so it can read tenant_id from context
+	api.Use(localMiddleware.TenantMiddleware())
+
 	// Vendor routes with RBAC
 	vendors := api.Group("/vendors")
 	{
