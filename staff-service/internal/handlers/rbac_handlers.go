@@ -74,8 +74,21 @@ func (h *RBACHandler) invalidateTenantCache(tenantID string) {
 
 // Helper functions
 func (h *RBACHandler) getTenantAndVendor(c *gin.Context) (string, *string) {
+	// Try context first (set by middleware for authenticated routes)
 	tenantID := c.GetString("tenant_id")
+	// Fallback to headers for internal service-to-service calls
+	if tenantID == "" {
+		tenantID = c.GetHeader("X-Tenant-ID")
+	}
+	// Also check JWT claim header (set by BFF when forwarding requests)
+	if tenantID == "" {
+		tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+	}
+
 	vendorID := c.GetString("vendor_id")
+	if vendorID == "" {
+		vendorID = c.GetHeader("X-Vendor-ID")
+	}
 	if vendorID == "" {
 		return tenantID, nil
 	}
