@@ -1148,7 +1148,7 @@ func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
 	}
 
 	// SECURITY: Ensure customer can only access their own orders
-	if order.Customer == nil || order.Customer.CustomerID.String() != customerIDStr {
+	if order.CustomerID.String() != customerIDStr {
 		c.JSON(http.StatusForbidden, ErrorResponse{
 			Error:   "Access denied",
 			Message: "You can only view your own orders",
