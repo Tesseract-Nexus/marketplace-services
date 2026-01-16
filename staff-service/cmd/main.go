@@ -256,6 +256,9 @@ func main() {
 		internalRoutes.GET("/staff/:id/tenants", staffHandler.GetStaffTenantsInternal)
 		// Sync keycloak_user_id after successful login - called by tenant-service
 		internalRoutes.POST("/staff/sync-keycloak-id", staffHandler.SyncKeycloakUserIDInternal)
+		// RBAC effective-permissions - called by go-shared/rbac client from other services
+		// This is an internal endpoint for service-to-service permission verification
+		internalRoutes.GET("/rbac/staff/:id/effective-permissions", rbacHandler.GetStaffEffectivePermissions)
 	}
 
 	// Protected API routes
