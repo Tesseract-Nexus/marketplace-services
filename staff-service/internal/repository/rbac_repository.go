@@ -649,10 +649,10 @@ func (r *rbacRepository) RemoveRoleAssignmentSafe(tenantID string, vendorID *str
 		query := tx.Model(&models.RoleAssignment{}).
 			Where("tenant_id = ? AND staff_id = ? AND is_active = ?", tenantID, staffID, true)
 		if vendorID != nil {
+			// Vendor-scoped users can only manage assignments within their vendor scope
 			query = query.Where("vendor_id = ?", *vendorID)
-		} else {
-			query = query.Where("vendor_id IS NULL")
 		}
+		// Tenant-level admins (vendorID == nil) can manage all assignments in the tenant
 
 		// Use FOR UPDATE to lock the rows during the transaction
 		if err := query.Count(&count).Error; err != nil {
@@ -667,10 +667,10 @@ func (r *rbacRepository) RemoveRoleAssignmentSafe(tenantID string, vendorID *str
 		// Proceed with the deletion
 		deleteQuery := tx.Where("tenant_id = ? AND staff_id = ? AND role_id = ?", tenantID, staffID, roleID)
 		if vendorID != nil {
+			// Vendor-scoped users can only delete assignments within their vendor scope
 			deleteQuery = deleteQuery.Where("vendor_id = ?", *vendorID)
-		} else {
-			deleteQuery = deleteQuery.Where("vendor_id IS NULL")
 		}
+		// Tenant-level admins (vendorID == nil) can delete any assignment in the tenant
 
 		result := deleteQuery.Delete(&models.RoleAssignment{})
 		if result.Error != nil {
@@ -895,9 +895,12 @@ func (r *rbacRepository) ListAuditLogs(tenantID string, vendorID *string, filter
 
 func (r *rbacRepository) applyVendorFilter(query *gorm.DB, vendorID *string) *gorm.DB {
 	if vendorID != nil {
+		// Vendor-scoped users: see their vendor's items + marketplace-scoped items
 		return query.Where("vendor_id = ? OR vendor_id IS NULL", *vendorID)
 	}
-	return query.Where("vendor_id IS NULL")
+	// Tenant-level admins (no vendor scope): see ALL items across the tenant
+	// No vendor filter needed - tenant_id filter is already applied by callers
+	return query
 }
 
 func (r *rbacRepository) buildPagination(page, limit int, total int64) *models.PaginationInfo {
