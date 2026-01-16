@@ -1706,7 +1706,10 @@ func (h *RBACHandler) RemoveRole(c *gin.Context) {
 
 // GetStaffEffectivePermissions gets effective permissions for a staff member
 // This endpoint is called by the RBAC middleware from other services
-// It supports email-based fallback when the provided ID doesn't match a staff record
+// It supports multiple fallback strategies when the provided ID doesn't match a staff record:
+// 1. Direct staff ID lookup
+// 2. Keycloak user ID lookup (for auth sessions using Keycloak subject)
+// 3. Email-based lookup (for legacy auth systems)
 func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 	tenantID, vendorID := h.getTenantAndVendor(c)
 	staffIDStr := c.Param("id")
@@ -1726,15 +1729,23 @@ func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 		// Found by ID, use it directly
 		staffID = staff.ID
 	} else {
-		// Staff not found by ID - try to find by email from header
-		// This handles the case where auth user ID (e.g., Azure AD Object ID)
-		// doesn't match the staff-service staff ID
-		userEmail := c.GetHeader("X-User-Email")
-		if userEmail != "" {
-			staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
-			if staffByEmail != nil {
-				staffID = staffByEmail.ID
-				log.Printf("[GetStaffEffectivePermissions] Found staff by email %s: %s (requested ID: %s)", userEmail, staffID, staffIDStr)
+		// Staff not found by ID - try to find by keycloak_user_id
+		// This handles the case where auth user ID (Keycloak subject) is passed
+		// but doesn't match the staff-service staff ID
+		staffByKeycloak, _ := h.staffRepo.GetByKeycloakUserID(tenantID, staffIDStr)
+		if staffByKeycloak != nil {
+			staffID = staffByKeycloak.ID
+			log.Printf("[GetStaffEffectivePermissions] Found staff by keycloak_user_id %s: %s", staffIDStr, staffID)
+		} else {
+			// Still not found - try to find by email from header
+			// This handles legacy systems using email-based auth
+			userEmail := c.GetHeader("X-User-Email")
+			if userEmail != "" {
+				staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
+				if staffByEmail != nil {
+					staffID = staffByEmail.ID
+					log.Printf("[GetStaffEffectivePermissions] Found staff by email %s: %s (requested ID: %s)", userEmail, staffID, staffIDStr)
+				}
 			}
 		}
 	}
