@@ -225,30 +225,14 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 	// API v1 routes
 	api := router.Group("/api/v1")
 
-	// Initialize Istio auth middleware for Keycloak JWT validation
-	// During migration, AllowLegacyHeaders enables fallback to X-* headers from auth-bff
-	istioAuthLogger := logrus.NewEntry(log).WithField("component", "istio_auth")
-	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-User-ID, X-Tenant-ID during migration
-		Logger:             istioAuthLogger,
-	})
-
-	// Apply authentication middleware
-	// In development: use DevelopmentAuthMiddleware for local testing
-	// In production: use IstioAuth which reads x-jwt-claim-* headers from Istio
-	if cfg.Environment == "development" {
-		api.Use(localMiddleware.DevelopmentAuthMiddleware())
-		api.Use(localMiddleware.TenantMiddleware()) // Still needed in dev mode
-	} else {
-		api.Use(istioAuth)
-		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
-		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
-		api.Use(localMiddleware.TenantMiddleware())
-		// Vendor isolation for marketplace mode
-		// Vendor-scoped users can only manage their own vendor
-		api.Use(gosharedmw.VendorScopeFilter())
-	}
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// Vendor routes with RBAC
 	vendors := api.Group("/vendors")

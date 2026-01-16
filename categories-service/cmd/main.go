@@ -18,6 +18,7 @@ import (
 	"categories-service/internal/middleware"
 	"categories-service/internal/repository"
 
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
 	"github.com/Tesseract-Nexus/go-shared/secrets"
 )
@@ -130,22 +131,14 @@ func main() {
 	// Protected API routes
 	api := router.Group("/api/v1")
 	
-	// Add auth middleware to protected routes
-	// For development, use simple auth. In production, use Azure AD auth
-	if cfg.Environment == "development" {
-		api.Use(middleware.DevelopmentAuthMiddleware())
-	} else {
-		// Use Azure AD authentication
-		tenantID := os.Getenv("AZURE_TENANT_ID")
-		applicationID := os.Getenv("AZURE_APPLICATION_ID")
-		if tenantID != "" && applicationID != "" {
-			api.Use(middleware.AzureADAuthMiddleware(tenantID, applicationID))
-		} else {
-			// Fallback to development auth if Azure AD not configured
-			api.Use(middleware.DevelopmentAuthMiddleware())
-		}
-	}
-	api.Use(middleware.TenantMiddleware())
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        true,
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// API routes with RBAC
 	v1 := api.Group("")

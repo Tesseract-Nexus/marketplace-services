@@ -264,31 +264,14 @@ func main() {
 	// Protected API routes
 	api := router.Group("/api/v1")
 
-	// Initialize Istio auth middleware for Keycloak JWT validation
-	// During migration, AllowLegacyHeaders enables fallback to X-* headers from auth-bff
-	istioAuthLogger := logrus.NewEntry(logrus.StandardLogger()).WithField("component", "istio_auth")
-	istioAuth := sharedMiddleware.IstioAuth(sharedMiddleware.IstioAuthConfig{
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(sharedMiddleware.IstioAuth(sharedMiddleware.IstioAuthConfig{
 		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-User-ID, X-Tenant-ID during migration
-		Logger:             istioAuthLogger,
-	})
-
-	// Vendor context (Istio doesn't provide vendor context, so keep this middleware)
-	api.Use(middleware.VendorMiddleware())
-
-	// Authentication middleware
-	// In development: use DevelopmentAuthMiddleware for local testing
-	// In production: use IstioAuth which reads x-jwt-claim-* headers from Istio
-	//                or falls back to X-* headers from auth-bff during migration
-	if cfg.Environment == "development" {
-		api.Use(middleware.TenantMiddleware()) // Still needed in dev mode
-		api.Use(middleware.DevelopmentAuthMiddleware())
-	} else {
-		api.Use(istioAuth)
-		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
-		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
-		api.Use(middleware.TenantMiddleware())
-	}
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// SEC-003: Resolve Keycloak user ID to internal staff ID
 	// The X-User-ID header from BFF contains the Keycloak user ID, not the staff service's internal ID.

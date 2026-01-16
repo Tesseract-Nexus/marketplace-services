@@ -358,43 +358,17 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Initialize Istio auth middleware for Keycloak JWT validation
-	// During migration, AllowLegacyHeaders enables fallback to X-* headers from auth-bff
-	istioAuthLogger := logrus.NewEntry(logger).WithField("component", "istio_auth")
-	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
-		RequireAuth:        true,
-		AllowLegacyHeaders: true, // Allow X-User-ID, X-Tenant-ID during migration
-		Logger:             istioAuthLogger,
-	})
-
 	// API routes - require tenant ID for multi-tenant data isolation
 	api := router.Group("/api/v1")
 
-	// Authentication middleware
-	// In development: use legacy header extraction for local testing
-	// In production: use IstioAuth which reads x-jwt-claim-* headers from Istio
-	//                or falls back to X-* headers from auth-bff during migration
-	if cfg.IsProduction() {
-		api.Use(istioAuth)
-		// TenantID middleware ensures tenant_id is always extracted from X-Tenant-ID header
-		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
-		api.Use(middleware.TenantID())
-		// Vendor isolation for marketplace mode
-		// Vendor-scoped users can only see orders from their vendor
-		api.Use(gosharedmw.VendorScopeFilter())
-	} else {
-		// Development mode: use header extraction middleware
-		api.Use(middleware.TenantID())
-		api.Use(middleware.VendorID())
-		api.Use(middleware.UserID())
-		api.Use(middleware.RequireTenantID())
-		api.Use(middleware.ValidateTenantUUID())
-	}
-
-	// In production, IstioAuth already validates tenant, but we still need UUID validation
-	if cfg.IsProduction() {
-		api.Use(middleware.ValidateTenantUUID())
-	}
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        true,
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 	{
 		orders := api.Group("/orders")
 		{

@@ -110,21 +110,14 @@ func main() {
 	// Protected API routes
 	api := router.Group("/api/v1")
 
-	// Add auth middleware - use IstioAuth for Keycloak JWT validation
-	if cfg.Environment == "development" {
-		api.Use(middleware.DevelopmentAuthMiddleware())
-		api.Use(middleware.TenantMiddleware())
-	} else {
-		// Use Istio headers from Keycloak JWT validation
-		api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
-			RequireAuth:        true,
-			AllowLegacyHeaders: true,
-		}))
-		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
-		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
-		api.Use(middleware.TenantMiddleware())
-		api.Use(gosharedmw.VendorScopeFilter())
-	}
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        true,
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// API routes with RBAC
 	v1 := api.Group("")

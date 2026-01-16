@@ -15,6 +15,7 @@ import (
 	"gift-cards-service/internal/models"
 	"gift-cards-service/internal/repository"
 
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
 )
 
@@ -122,9 +123,14 @@ func main() {
 	// Protected API routes (auth required) - for admin operations
 	api := router.Group("/api/v1")
 
-	// Add auth middleware to protected routes
-	api.Use(middleware.DevelopmentAuthMiddleware())
-	api.Use(middleware.TenantMiddleware())
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// AllowLegacyHeaders provides backward compatibility during migration
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        true,
+		AllowLegacyHeaders: true, // Allow X-* headers during migration
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// Gift Cards API routes with RBAC
 	v1 := api.Group("")
