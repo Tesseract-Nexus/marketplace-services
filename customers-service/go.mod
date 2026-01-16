@@ -3,7 +3,8 @@ module customers-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116071333-4de9a2a176a9
+	cloud.google.com/go/secretmanager v1.11.4
+	github.com/Tesseract-Nexus/go-shared v0.0.0-20260114152147-11cd2a14e96d
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
@@ -17,7 +18,6 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.3 // indirect
-	cloud.google.com/go/secretmanager v1.11.4 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect

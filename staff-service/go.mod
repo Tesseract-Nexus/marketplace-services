@@ -3,7 +3,8 @@ module staff-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116071333-4de9a2a176a9
+	cloud.google.com/go/secretmanager v1.11.4
+	github.com/Tesseract-Nexus/go-shared v0.0.0-20260115121403-30126e2e5c42
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
@@ -21,7 +22,6 @@ require (
 	cloud.google.com/go/compute v1.23.1 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	cloud.google.com/go/iam v1.1.3 // indirect
-	cloud.google.com/go/secretmanager v1.11.4 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
