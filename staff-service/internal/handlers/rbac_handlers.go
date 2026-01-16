@@ -1783,13 +1783,17 @@ func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 	tenantID, vendorID := h.getTenantAndVendor(c)
 
-	// Get user ID from context - try staff_id first, then user_id, then X-User-ID header
+	// Get user ID from context - try staff_id first, then user_id, then headers
 	userIDStr := c.GetString("staff_id")
 	if userIDStr == "" {
 		userIDStr = c.GetString("user_id")
 	}
+	// Fallback to headers for BFF calls that bypass Istio auth
 	if userIDStr == "" {
 		userIDStr = c.GetHeader("X-User-ID")
+	}
+	if userIDStr == "" {
+		userIDStr = c.GetHeader("x-jwt-claim-sub") // BFF forwards JWT sub claim here
 	}
 
 	if userIDStr == "" {
