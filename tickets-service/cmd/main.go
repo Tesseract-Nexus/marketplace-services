@@ -120,6 +120,9 @@ func main() {
 			RequireAuth:        true,
 			AllowLegacyHeaders: true,
 		}))
+		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		api.Use(middleware.TenantMiddleware())
 		api.Use(gosharedmw.VendorScopeFilter())
 	}
 

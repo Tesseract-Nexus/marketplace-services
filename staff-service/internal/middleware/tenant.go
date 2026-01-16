@@ -9,10 +9,16 @@ import (
 // TenantMiddleware extracts tenant ID from headers
 // SECURITY: No default tenant fallback - requests without tenant context are rejected
 // Hierarchy: Tenant -> Vendor -> Staff
+// NOTE: First checks if tenant_id was already set by IstioAuth middleware
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Get tenant ID from X-Tenant-ID header (required)
-		tenantID := c.GetHeader("X-Tenant-ID")
+		// First, check if tenant_id was already set by IstioAuth middleware
+		tenantID := c.GetString("tenant_id")
+
+		// If not set by IstioAuth, get tenant ID from X-Tenant-ID header
+		if tenantID == "" {
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
 
 		// SECURITY: No default fallback - fail closed
 		if tenantID == "" {

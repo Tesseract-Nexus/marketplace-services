@@ -29,9 +29,14 @@ type TenantContext struct {
 
 // TenantMiddleware extracts tenant information from headers
 // This is set by the upstream middleware (admin/storefront) or Istio
+// NOTE: First checks if tenant_id was already set by IstioAuth middleware
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tenantID := c.GetHeader("X-Tenant-ID")
+		// First, check if tenant_id was already set by IstioAuth middleware
+		tenantID := c.GetString("tenant_id")
+		if tenantID == "" {
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
 		userID := c.GetHeader("X-User-ID")
 		vendorID := c.GetHeader("X-Vendor-ID")
 		requestID := c.GetHeader("X-Request-ID")

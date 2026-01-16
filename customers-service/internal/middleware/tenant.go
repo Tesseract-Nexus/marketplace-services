@@ -6,10 +6,17 @@ import (
 
 // TenantMiddleware extracts X-Tenant-ID header and sets it in context
 // This allows handlers to use c.GetString("tenant_id") to access the tenant ID
+// NOTE: First checks if tenant_id was already set by IstioAuth middleware
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Extract tenant ID from header
-		tenantID := c.GetHeader("X-Tenant-ID")
+		// First, check if tenant_id was already set by IstioAuth middleware
+		tenantID := c.GetString("tenant_id")
+
+		// If not set by IstioAuth, extract tenant ID from header
+		if tenantID == "" {
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
+
 		if tenantID != "" {
 			// Set it in context for handlers to access via c.GetString("tenant_id")
 			c.Set("tenant_id", tenantID)

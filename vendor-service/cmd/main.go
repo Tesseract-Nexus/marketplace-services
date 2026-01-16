@@ -242,6 +242,9 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 		api.Use(localMiddleware.TenantMiddleware()) // Still needed in dev mode
 	} else {
 		api.Use(istioAuth)
+		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		api.Use(localMiddleware.TenantMiddleware())
 		// Vendor isolation for marketplace mode
 		// Vendor-scoped users can only manage their own vendor
 		api.Use(gosharedmw.VendorScopeFilter())

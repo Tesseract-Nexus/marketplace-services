@@ -25,13 +25,19 @@ func CORS() gin.HandlerFunc {
 }
 
 // TenantMiddleware extracts tenant ID from headers
+// NOTE: First checks if tenant_id was already set by IstioAuth middleware
+// SECURITY: No default tenant fallback - requests without tenant context should be rejected upstream
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tenantID := c.GetHeader("X-Tenant-ID")
+		// First, check if tenant_id was already set by IstioAuth middleware
+		tenantID := c.GetString("tenant_id")
+
+		// If not set by IstioAuth, extract from header
 		if tenantID == "" {
-			// For development, use a default tenant ID
-			tenantID = "00000000-0000-0000-0000-000000000001"
+			tenantID = c.GetHeader("X-Tenant-ID")
 		}
+
+		// Set tenant_id in context (even if empty - upstream middleware handles validation)
 		c.Set("tenant_id", tenantID)
 		c.Next()
 	}

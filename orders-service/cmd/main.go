@@ -376,6 +376,9 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	//                or falls back to X-* headers from auth-bff during migration
 	if cfg.IsProduction() {
 		api.Use(istioAuth)
+		// TenantID middleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		api.Use(middleware.TenantID())
 		// Vendor isolation for marketplace mode
 		// Vendor-scoped users can only see orders from their vendor
 		api.Use(gosharedmw.VendorScopeFilter())

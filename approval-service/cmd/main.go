@@ -156,6 +156,9 @@ func main() {
 		api.Use(middleware.TenantMiddleware())
 	} else {
 		api.Use(istioAuth)
+		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		api.Use(middleware.TenantMiddleware())
 		api.Use(gosharedmw.VendorScopeFilter())
 	}
 

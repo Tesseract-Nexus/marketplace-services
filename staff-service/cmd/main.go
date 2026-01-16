@@ -285,6 +285,9 @@ func main() {
 		api.Use(middleware.DevelopmentAuthMiddleware())
 	} else {
 		api.Use(istioAuth)
+		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		api.Use(middleware.TenantMiddleware())
 	}
 
 	// SEC-003: Resolve Keycloak user ID to internal staff ID
