@@ -16,10 +16,8 @@ github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tN
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
-github.com/Tesseract-Nexus/go-shared v0.0.0-20260114152147-11cd2a14e96d h1:ZDMevDiXoEqpfbP2e/C6eTkHG9y3jR3BgyrGtDyUcwI=
-github.com/Tesseract-Nexus/go-shared v0.0.0-20260114152147-11cd2a14e96d/go.mod h1:8pz+AQH7vqnb5jSJUf3q1xWoszVZyhON4p8bBTS894U=
-github.com/Tesseract-Nexus/go-shared v0.0.0-20260116025029-bf676bd77644 h1:MYbVvmrmvtYnuBdcNY2LCk7hvQ++5OlcAJyHRXeC1WU=
-github.com/Tesseract-Nexus/go-shared v0.0.0-20260116025029-bf676bd77644/go.mod h1:8pz+AQH7vqnb5jSJUf3q1xWoszVZyhON4p8bBTS894U=
+github.com/Tesseract-Nexus/go-shared v0.0.0-20260116034007-544b3ae653eb h1:WYykYfxEyBSr81jH6rvUUBMsjr60hjHG5iFUSMDS5Q0=
+github.com/Tesseract-Nexus/go-shared v0.0.0-20260116034007-544b3ae653eb/go.mod h1:8pz+AQH7vqnb5jSJUf3q1xWoszVZyhON4p8bBTS894U=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=

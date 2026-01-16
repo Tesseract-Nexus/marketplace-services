@@ -3,7 +3,7 @@ module approval-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116025029-bf676bd77644
+	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116034007-544b3ae653eb
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang-jwt/jwt/v5 v5.3.0
