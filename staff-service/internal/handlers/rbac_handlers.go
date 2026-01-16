@@ -1814,22 +1814,33 @@ func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 	}
 
 	// In multi-tenant systems, the auth user ID may not match the staff ID
-	// First, try to find staff by the auth user ID in this tenant
+	// Try multiple lookup strategies to find the staff record
 	staffID := userID
 	staff, _ := h.staffRepo.GetByID(tenantID, userID)
 	if staff != nil {
 		staffID = staff.ID
 	} else {
-		// Staff not found by ID - try to find by email from auth context
-		userEmail := c.GetString("user_email")
-		if userEmail == "" {
-			userEmail = c.GetHeader("X-User-Email")
-		}
-		if userEmail != "" {
-			staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
-			if staffByEmail != nil {
-				staffID = staffByEmail.ID
-				log.Printf("[GetMyEffectivePermissions] Found staff by email %s: %s (auth user: %s)", userEmail, staffID, userID)
+		// Staff not found by ID - try to find by keycloak_user_id
+		// This handles when auth user ID is the Keycloak subject (sub claim)
+		staffByKeycloak, _ := h.staffRepo.GetByKeycloakUserID(tenantID, userIDStr)
+		if staffByKeycloak != nil {
+			staffID = staffByKeycloak.ID
+			log.Printf("[GetMyEffectivePermissions] Found staff by keycloak_user_id %s: %s", userIDStr, staffID)
+		} else {
+			// Still not found - try to find by email from auth context
+			userEmail := c.GetString("user_email")
+			if userEmail == "" {
+				userEmail = c.GetHeader("X-User-Email")
+			}
+			if userEmail == "" {
+				userEmail = c.GetHeader("x-jwt-claim-email")
+			}
+			if userEmail != "" {
+				staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
+				if staffByEmail != nil {
+					staffID = staffByEmail.ID
+					log.Printf("[GetMyEffectivePermissions] Found staff by email %s: %s (auth user: %s)", userEmail, staffID, userID)
+				}
 			}
 		}
 	}
