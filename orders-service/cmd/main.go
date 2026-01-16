@@ -451,5 +451,34 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		}
 	}
 
+	// =============================================================================
+	// PUBLIC STOREFRONT ENDPOINTS (for customer-facing order operations)
+	// These endpoints support both authenticated customers and guest checkout
+	// =============================================================================
+	storefront := router.Group("/api/v1/storefront")
+	storefront.Use(middleware.RequireTenantID())       // Tenant context required
+	storefront.Use(middleware.OptionalCustomerAuth())  // Extract customer info if JWT present
+	{
+		storefrontOrders := storefront.Group("/orders")
+		{
+			// Create order - supports both guest and authenticated checkout
+			// If Authorization header present, customer ID extracted from JWT
+			// If no auth, customerId should be provided in request body (guest checkout)
+			storefrontOrders.POST("", orderHandler.CreateOrder)
+		}
+	}
+
+	// Customer-authenticated storefront endpoints (require valid customer JWT)
+	customerStorefront := router.Group("/api/v1/storefront/my")
+	customerStorefront.Use(middleware.RequireTenantID())
+	customerStorefront.Use(middleware.CustomerAuthMiddleware())
+	{
+		// View own orders - customers can only see their own orders
+		customerStorefront.GET("/orders", orderHandler.ListCustomerOrders)
+		customerStorefront.GET("/orders/:id", orderHandler.GetCustomerOrder)
+		customerStorefront.GET("/orders/:id/tracking", orderHandler.GetOrderTracking)
+	}
+	log.Println("✓ Public storefront endpoints initialized")
+
 	return router
 }

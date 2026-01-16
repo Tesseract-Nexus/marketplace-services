@@ -1,8 +1,12 @@
 package middleware
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -194,6 +198,140 @@ func ValidateTenantUUID() gin.HandlerFunc {
 				"message": "Tenant ID must be a valid UUID",
 			})
 			return
+		}
+
+		c.Next()
+	}
+}
+
+// JWTPayload represents the decoded JWT payload for customer authentication
+type JWTPayload struct {
+	Sub        string `json:"sub"`
+	CustomerID string `json:"customer_id"`
+	Email      string `json:"email"`
+	TenantID   string `json:"tenant_id"`
+}
+
+// CustomerAuthMiddleware validates customer JWT tokens and extracts customer ID
+// This middleware is for public/storefront routes where customers access their own orders
+func CustomerAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+
+		// Extract token from "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+			c.Abort()
+			return
+		}
+
+		token := parts[1]
+
+		// Decode JWT payload (base64url decode the middle part)
+		tokenParts := strings.Split(token, ".")
+		if len(tokenParts) != 3 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT format"})
+			c.Abort()
+			return
+		}
+
+		// Base64url decode the payload
+		payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload"})
+			c.Abort()
+			return
+		}
+
+		var jwtPayload JWTPayload
+		if err := json.Unmarshal(payload, &jwtPayload); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload structure"})
+			c.Abort()
+			return
+		}
+
+		// Extract customer ID from token (try both sub and customer_id fields)
+		customerID := jwtPayload.CustomerID
+		if customerID == "" {
+			customerID = jwtPayload.Sub
+		}
+
+		if customerID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Customer ID not found in token"})
+			c.Abort()
+			return
+		}
+
+		// Set customer ID in context
+		c.Set("customer_id", customerID)
+		c.Set("customer_email", jwtPayload.Email)
+
+		// Also set tenant_id from token if present and not already set
+		if jwtPayload.TenantID != "" && c.GetString("tenant_id") == "" {
+			c.Set("tenant_id", jwtPayload.TenantID)
+		}
+
+		c.Next()
+	}
+}
+
+// OptionalCustomerAuth extracts customer info from JWT if present, but doesn't require it
+// This is useful for guest checkout where authentication is optional
+func OptionalCustomerAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			// No auth header - continue as guest
+			c.Next()
+			return
+		}
+
+		// Try to extract customer info
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			// Invalid format - continue as guest
+			c.Next()
+			return
+		}
+
+		token := parts[1]
+		tokenParts := strings.Split(token, ".")
+		if len(tokenParts) != 3 {
+			c.Next()
+			return
+		}
+
+		payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		var jwtPayload JWTPayload
+		if err := json.Unmarshal(payload, &jwtPayload); err != nil {
+			c.Next()
+			return
+		}
+
+		// Extract and set customer ID if present
+		customerID := jwtPayload.CustomerID
+		if customerID == "" {
+			customerID = jwtPayload.Sub
+		}
+		if customerID != "" {
+			c.Set("customer_id", customerID)
+			c.Set("customer_email", jwtPayload.Email)
+		}
+
+		// Set tenant_id from token if present and not already set
+		if jwtPayload.TenantID != "" && c.GetString("tenant_id") == "" {
+			c.Set("tenant_id", jwtPayload.TenantID)
 		}
 
 		c.Next()

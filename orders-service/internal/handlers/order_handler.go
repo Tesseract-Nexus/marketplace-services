@@ -1007,3 +1007,154 @@ type HealthResponse struct {
 	Service string `json:"service"`
 	Version string `json:"version"`
 }
+
+// =============================================================================
+// CUSTOMER-FACING STOREFRONT ENDPOINTS
+// These endpoints allow customers to view their own orders
+// =============================================================================
+
+// getCustomerID extracts customer ID from context (set by CustomerAuthMiddleware)
+func getCustomerID(c *gin.Context) (string, bool) {
+	customerID, exists := c.Get("customer_id")
+	if !exists {
+		return "", false
+	}
+	return customerID.(string), true
+}
+
+// ListCustomerOrders lists orders for the authenticated customer
+// @Summary List customer's orders
+// @Description Get a paginated list of orders for the authenticated customer
+// @Tags storefront
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Param status query string false "Order status filter"
+// @Success 200 {object} services.OrderListResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /storefront/my/orders [get]
+func (h *OrderHandler) ListCustomerOrders(c *gin.Context) {
+	tenantID, ok := getTenantID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Missing tenant ID",
+			Message: "X-Tenant-ID header is required",
+		})
+		return
+	}
+
+	customerIDStr, ok := getCustomerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "Customer authentication required",
+		})
+		return
+	}
+
+	customerID, err := uuid.Parse(customerIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid customer ID",
+			Message: "Customer ID must be a valid UUID",
+		})
+		return
+	}
+
+	filters := services.OrderListFilters{
+		CustomerID: &customerID,
+		Page:       1,
+		Limit:      20,
+	}
+
+	// Parse query parameters
+	if pageStr := c.Query("page"); pageStr != "" {
+		if page, err := strconv.Atoi(pageStr); err == nil && page > 0 {
+			filters.Page = page
+		}
+	}
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit <= 100 {
+			filters.Limit = limit
+		}
+	}
+
+	if statusStr := c.Query("status"); statusStr != "" {
+		status := models.OrderStatus(statusStr)
+		filters.Status = &status
+	}
+
+	response, err := h.orderService.ListOrders(filters, tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to list orders",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetCustomerOrder retrieves a specific order for the authenticated customer
+// @Summary Get customer's order by ID
+// @Description Get a specific order if it belongs to the authenticated customer
+// @Tags storefront
+// @Produce json
+// @Param id path string true "Order ID"
+// @Success 200 {object} models.Order
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /storefront/my/orders/{id} [get]
+func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
+	tenantID, ok := getTenantID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Missing tenant ID",
+			Message: "X-Tenant-ID header is required",
+		})
+		return
+	}
+
+	customerIDStr, ok := getCustomerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "Customer authentication required",
+		})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid order ID",
+			Message: "Order ID must be a valid UUID",
+		})
+		return
+	}
+
+	order, err := h.orderService.GetOrder(id, tenantID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error:   "Order not found",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// SECURITY: Ensure customer can only access their own orders
+	if order.Customer == nil || order.Customer.CustomerID.String() != customerIDStr {
+		c.JSON(http.StatusForbidden, ErrorResponse{
+			Error:   "Access denied",
+			Message: "You can only view your own orders",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, order)
+}

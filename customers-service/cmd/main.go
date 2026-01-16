@@ -282,6 +282,18 @@ func main() {
 	publicCustomers.Use(middleware.CustomerAuthMiddleware())
 	publicCustomers.Use(middleware.RequireSameCustomer())
 	{
+		// Cart (for storefront use - customers managing their own cart)
+		publicCustomers.GET("/:id/cart", cartHandler.GetCart)
+		publicCustomers.POST("/:id/cart", cartHandler.AddToCart)
+		publicCustomers.PUT("/:id/cart", cartHandler.SyncCart)
+		publicCustomers.DELETE("/:id/cart", cartHandler.ClearCart)
+		publicCustomers.PUT("/:id/cart/items/:itemId", cartHandler.UpdateCartItem)
+		publicCustomers.DELETE("/:id/cart/items/:itemId", cartHandler.RemoveFromCart)
+		publicCustomers.POST("/:id/cart/merge", cartHandler.MergeCart)
+		publicCustomers.POST("/:id/cart/validate", cartHandler.ValidateCart)
+		publicCustomers.DELETE("/:id/cart/unavailable", cartHandler.RemoveUnavailableItems)
+		publicCustomers.POST("/:id/cart/accept-prices", cartHandler.AcceptPriceChanges)
+
 		// Customer Lists (for storefront use)
 		publicCustomers.GET("/:id/lists", customerListHandler.GetLists)
 		publicCustomers.POST("/:id/lists", customerListHandler.CreateList)
