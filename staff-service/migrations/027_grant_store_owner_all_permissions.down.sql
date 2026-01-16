@@ -1,0 +1,3 @@
+-- Migration: 027_grant_store_owner_all_permissions (down)
+-- This is a no-op down migration since we don't want to remove permissions
+-- The up migration is idempotent and safe to re-run
