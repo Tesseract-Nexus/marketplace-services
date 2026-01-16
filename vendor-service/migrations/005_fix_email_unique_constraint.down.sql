@@ -1,0 +1,3 @@
+-- Rollback: This migration only drops an incorrect index
+-- We don't recreate the incorrect index on rollback
+-- as the correct composite index remains in place

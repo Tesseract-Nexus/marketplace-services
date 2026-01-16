@@ -72,14 +72,17 @@ func (j *JSON) Scan(value interface{}) error {
 // Vendor represents a vendor entity
 type Vendor struct {
 	ID               uuid.UUID        `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	TenantID         string           `json:"tenantId" gorm:"not null;index"`
+	// TenantID + Email form a composite unique index to allow same email across different tenants
+	// This enables users to own multiple stores with the same email address
+	TenantID         string           `json:"tenantId" gorm:"not null;index;uniqueIndex:idx_tenant_email,priority:1"`
 	Name             string           `json:"name" gorm:"not null"`
 	Details          *string          `json:"details,omitempty"`
 	Status           VendorStatus     `json:"status" gorm:"not null;default:'PENDING'"`
 	Location         *string          `json:"location,omitempty"`
 	PrimaryContact   string           `json:"primaryContact" gorm:"not null"`
 	SecondaryContact *string          `json:"secondaryContact,omitempty"`
-	Email            string           `json:"email" gorm:"not null;uniqueIndex:idx_tenant_email"`
+	// Email is unique per tenant (composite with TenantID), not globally unique
+	Email            string           `json:"email" gorm:"not null;uniqueIndex:idx_tenant_email,priority:2"`
 	ValidationStatus ValidationStatus `json:"validationStatus" gorm:"not null;default:'NOT_STARTED'"`
 	CommissionRate   float64          `json:"commissionRate" gorm:"not null;default:0.0"`
 	IsActive         bool             `json:"isActive" gorm:"default:true"`
