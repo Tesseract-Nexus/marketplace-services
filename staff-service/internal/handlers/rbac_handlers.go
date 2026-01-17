@@ -2080,10 +2080,21 @@ func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
 
 	// Step 1: Seed default roles for the tenant (idempotent)
 	// CRITICAL: If this fails and roles don't exist, owner won't have permissions
-	if err := h.repo.SeedDefaultRoles(tenantID, nil); err != nil {
-		log.Printf("[BootstrapOwner] Warning: SeedDefaultRoles returned error for tenant %s: %v", tenantID, err)
-	} else {
-		log.Printf("[BootstrapOwner] Seeded default roles for tenant %s", tenantID)
+	// FIX-A3: Retry seeding up to 3 times with small delay to handle transient failures
+	var seedErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if seedErr = h.repo.SeedDefaultRoles(tenantID, nil); seedErr == nil {
+			log.Printf("[BootstrapOwner] Seeded default roles for tenant %s (attempt %d)", tenantID, attempt)
+			break
+		}
+		log.Printf("[BootstrapOwner] Warning: SeedDefaultRoles attempt %d failed for tenant %s: %v", attempt, tenantID, seedErr)
+		if attempt < 3 {
+			time.Sleep(100 * time.Millisecond) // Small delay before retry
+		}
+	}
+	if seedErr != nil {
+		log.Printf("[BootstrapOwner] Warning: SeedDefaultRoles failed after 3 attempts for tenant %s: %v", tenantID, seedErr)
+		// Continue anyway - the verification below will handle missing roles
 	}
 
 	// Verify that owner role exists (regardless of seed error - handles partial seeding)
