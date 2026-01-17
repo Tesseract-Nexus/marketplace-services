@@ -1129,8 +1129,8 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			"staff_id":  {staff.ID.String()},
 			"tenant_id": {tenantID},
 		}
-		if staff.VendorID != nil {
-			keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+		if staff.VendorID != nil && *staff.VendorID != "" {
+			keycloakAttrs["vendor_id"] = []string{*staff.VendorID}
 		}
 		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), keycloakUserID, keycloakAttrs); err != nil {
 			log.Printf("[ActivateAccount] Warning: Failed to set Keycloak user attributes for %s: %v", staff.Email, err)
@@ -2094,8 +2094,8 @@ func (h *AuthHandler) BackfillKeycloakAttributes(c *gin.Context) {
 			"staff_id":  {staff.ID.String()},
 			"tenant_id": {tenantID},
 		}
-		if staff.VendorID != nil {
-			keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+		if staff.VendorID != nil && *staff.VendorID != "" {
+			keycloakAttrs["vendor_id"] = []string{*staff.VendorID}
 		}
 
 		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), *staff.KeycloakUserID, keycloakAttrs); err != nil {
@@ -2200,8 +2200,8 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 		"staff_id":  {staff.ID.String()},
 		"tenant_id": {tenantID},
 	}
-	if staff.VendorID != nil {
-		keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+	if staff.VendorID != nil && *staff.VendorID != "" {
+		keycloakAttrs["vendor_id"] = []string{*staff.VendorID}
 	}
 
 	if err := h.keycloakClient.UpdateUserAttributes(ctx, keycloakUserID, keycloakAttrs); err != nil {
