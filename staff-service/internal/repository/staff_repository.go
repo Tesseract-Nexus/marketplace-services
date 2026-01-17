@@ -61,6 +61,7 @@ type StaffRepository interface {
 
 	// Keycloak integration
 	UpdateKeycloakUserID(tenantID string, staffID uuid.UUID, keycloakUserID string) error
+	GetActivatedStaff(tenantID string) ([]models.Staff, error) // Get all activated staff for Keycloak attribute backfill
 
 	// Team role lookup
 	GetTeamDefaultRoleName(teamID uuid.UUID) (string, error)
@@ -913,6 +914,16 @@ func (r *staffRepository) UpdateKeycloakUserID(tenantID string, staffID uuid.UUI
 	return r.db.Model(&models.Staff{}).
 		Where("tenant_id = ? AND id = ?", tenantID, staffID).
 		Update("keycloak_user_id", keycloakUserID).Error
+}
+
+// GetActivatedStaff returns all activated staff members for a tenant.
+// Used for backfilling Keycloak user attributes (staff_id, tenant_id, vendor_id)
+// that are needed for Istio JWT claim extraction.
+func (r *staffRepository) GetActivatedStaff(tenantID string) ([]models.Staff, error) {
+	var staff []models.Staff
+	err := r.db.Where("tenant_id = ? AND account_status = ? AND deleted_at IS NULL", tenantID, "active").
+		Find(&staff).Error
+	return staff, err
 }
 
 // GetTeamDefaultRoleName returns the display name of the team's default role

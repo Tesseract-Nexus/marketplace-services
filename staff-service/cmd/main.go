@@ -443,6 +443,10 @@ func main() {
 
 			// SSO config (admin only) - SEC-002: Require settings permission
 			auth.PUT("/sso/config", rbacMiddleware.RequirePermission("settings:update"), authHandler.UpdateSSOConfig)
+
+			// Admin-only: Backfill Keycloak user attributes for existing activated staff
+			// This endpoint syncs staff_id, tenant_id, vendor_id to Keycloak for Istio JWT claim extraction
+			auth.POST("/admin/backfill-keycloak", rbacMiddleware.RequirePermission("settings:update"), authHandler.BackfillKeycloakAttributes)
 		}
 
 		// Invitation management - SEC-002: Require staff:invite permission

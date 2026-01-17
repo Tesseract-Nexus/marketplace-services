@@ -38,6 +38,7 @@ type KeycloakClient interface {
 	CreateUser(ctx context.Context, user auth.UserRepresentation) (string, error)
 	SetUserPassword(ctx context.Context, userID string, password string, temporary bool) error
 	GetUserByEmail(ctx context.Context, email string) (*auth.UserRepresentation, error)
+	UpdateUserAttributes(ctx context.Context, userID string, attributes map[string][]string) error
 }
 
 // JWTClaims represents JWT claims
@@ -1122,6 +1123,22 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			}
 		}
 
+		// Set user attributes in Keycloak for JWT claims (staff_id, tenant_id, vendor_id)
+		// These attributes are extracted by Istio and forwarded to backend services
+		keycloakAttrs := map[string][]string{
+			"staff_id":  {staff.ID.String()},
+			"tenant_id": {tenantID},
+		}
+		if staff.VendorID != nil {
+			keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+		}
+		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), keycloakUserID, keycloakAttrs); err != nil {
+			log.Printf("[ActivateAccount] Warning: Failed to set Keycloak user attributes for %s: %v", staff.Email, err)
+			// Don't fail activation - attributes can be synced later via backfill
+		} else {
+			log.Printf("[ActivateAccount] Keycloak user attributes set for %s (staff_id=%s, tenant_id=%s)", staff.Email, staff.ID, tenantID)
+		}
+
 		// Set password in Keycloak
 		if err := h.keycloakClient.SetUserPassword(c.Request.Context(), keycloakUserID, *req.Password, false); err != nil {
 			log.Printf("[ActivateAccount] Failed to set Keycloak password for %s: %v", staff.Email, err)
@@ -1172,6 +1189,13 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		}
 		_ = h.authRepo.LinkOAuthProvider(provider)
 
+		// Create/update Keycloak user for SSO users to enable JWT claims extraction by Istio
+		if h.keycloakClient != nil {
+			if err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff); err != nil {
+				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Google SSO %s: %v", staff.Email, err)
+			}
+		}
+
 	case models.AuthMethodMicrosoftSSO:
 		if req.MicrosoftIDToken == nil {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -1207,6 +1231,13 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			IsPrimary:      true,
 		}
 		_ = h.authRepo.LinkOAuthProvider(provider)
+
+		// Create/update Keycloak user for SSO users to enable JWT claims extraction by Istio
+		if h.keycloakClient != nil {
+			if err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff); err != nil {
+				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Microsoft SSO %s: %v", staff.Email, err)
+			}
+		}
 
 	default:
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -2007,6 +2038,89 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 	})
 }
 
+// BackfillKeycloakAttributes syncs staff_id, tenant_id, and vendor_id attributes
+// to Keycloak for all activated staff members. This is an admin-only endpoint
+// used for one-time migration when enabling Istio JWT claim extraction.
+// POST /api/v1/auth/admin/backfill-keycloak
+func (h *AuthHandler) BackfillKeycloakAttributes(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "MISSING_TENANT",
+				Message: "Tenant ID is required",
+			},
+		})
+		return
+	}
+
+	if h.keycloakClient == nil {
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "KEYCLOAK_UNAVAILABLE",
+				Message: "Keycloak client not configured",
+			},
+		})
+		return
+	}
+
+	// Get all activated staff for this tenant
+	staffList, err := h.staffRepo.GetActivatedStaff(tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "FETCH_FAILED",
+				Message: "Failed to fetch staff list",
+			},
+		})
+		return
+	}
+
+	var synced, failed, skipped int
+	var errors []string
+
+	for _, staff := range staffList {
+		// Skip if no Keycloak user ID
+		if staff.KeycloakUserID == nil || *staff.KeycloakUserID == "" {
+			skipped++
+			continue
+		}
+
+		// Set attributes in Keycloak
+		keycloakAttrs := map[string][]string{
+			"staff_id":  {staff.ID.String()},
+			"tenant_id": {tenantID},
+		}
+		if staff.VendorID != nil {
+			keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+		}
+
+		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), *staff.KeycloakUserID, keycloakAttrs); err != nil {
+			failed++
+			errors = append(errors, fmt.Sprintf("%s: %v", staff.Email, err))
+			log.Printf("[BackfillKeycloakAttributes] Failed to sync %s: %v", staff.Email, err)
+		} else {
+			synced++
+			log.Printf("[BackfillKeycloakAttributes] Synced %s (staff_id=%s)", staff.Email, staff.ID)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"total":   len(staffList),
+			"synced":  synced,
+			"failed":  failed,
+			"skipped": skipped,
+			"errors":  errors,
+		},
+		"message": fmt.Sprintf("Backfill completed: %d synced, %d failed, %d skipped (no Keycloak ID)", synced, failed, skipped),
+	})
+}
+
 // ValidateStaffCredentials - DEPRECATED
 // POST /api/v1/auth/validate
 // This endpoint is deprecated - staff authentication should go through Keycloak.
@@ -2034,4 +2148,66 @@ func parseInt(s string) (int, error) {
 	var i int
 	_, err := fmt.Sscanf(s, "%d", &i)
 	return i, err
+}
+
+// ensureKeycloakUserWithAttributes creates or updates a Keycloak user with staff attributes.
+// This is necessary for Istio JWT claim extraction to work properly - Istio extracts claims
+// from the JWT and forwards them as headers (x-jwt-claim-staff-id, x-jwt-claim-vendor-id, etc.)
+// to backend services for RBAC authorization.
+func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tenantID string, staff *models.Staff) error {
+	if h.keycloakClient == nil {
+		return fmt.Errorf("keycloak client not configured")
+	}
+
+	var keycloakUserID string
+
+	// Check if staff already has a Keycloak user ID
+	if staff.KeycloakUserID != nil && *staff.KeycloakUserID != "" {
+		keycloakUserID = *staff.KeycloakUserID
+	} else {
+		// Check if user exists in Keycloak by email
+		existingUser, err := h.keycloakClient.GetUserByEmail(ctx, staff.Email)
+		if err == nil && existingUser != nil && existingUser.ID != "" {
+			keycloakUserID = existingUser.ID
+			log.Printf("[ensureKeycloakUserWithAttributes] Found existing Keycloak user for %s: %s", staff.Email, keycloakUserID)
+		} else {
+			// Create new Keycloak user
+			userRep := auth.UserRepresentation{
+				Username:      staff.Email,
+				Email:         staff.Email,
+				EmailVerified: true,
+				Enabled:       true,
+				FirstName:     staff.FirstName,
+				LastName:      staff.LastName,
+			}
+			newUserID, err := h.keycloakClient.CreateUser(ctx, userRep)
+			if err != nil {
+				return fmt.Errorf("failed to create Keycloak user: %w", err)
+			}
+			keycloakUserID = newUserID
+			log.Printf("[ensureKeycloakUserWithAttributes] Created Keycloak user for %s: %s", staff.Email, keycloakUserID)
+		}
+
+		// Store Keycloak user ID on staff record
+		if err := h.staffRepo.UpdateKeycloakUserID(tenantID, staff.ID, keycloakUserID); err != nil {
+			log.Printf("[ensureKeycloakUserWithAttributes] Warning: Failed to store Keycloak user ID: %v", err)
+		}
+	}
+
+	// Set user attributes in Keycloak for JWT claims
+	// These are extracted by Istio RequestAuthentication and forwarded as headers
+	keycloakAttrs := map[string][]string{
+		"staff_id":  {staff.ID.String()},
+		"tenant_id": {tenantID},
+	}
+	if staff.VendorID != nil {
+		keycloakAttrs["vendor_id"] = []string{staff.VendorID.String()}
+	}
+
+	if err := h.keycloakClient.UpdateUserAttributes(ctx, keycloakUserID, keycloakAttrs); err != nil {
+		return fmt.Errorf("failed to update Keycloak user attributes: %w", err)
+	}
+
+	log.Printf("[ensureKeycloakUserWithAttributes] Keycloak attributes set for %s (staff_id=%s, tenant_id=%s)", staff.Email, staff.ID, tenantID)
+	return nil
 }
