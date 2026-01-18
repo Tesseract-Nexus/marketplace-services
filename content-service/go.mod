@@ -3,7 +3,6 @@ module content-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116025029-bf676bd77644
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
 	gorm.io/gorm v1.25.12
