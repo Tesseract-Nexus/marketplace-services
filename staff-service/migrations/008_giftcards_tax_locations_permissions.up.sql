@@ -35,15 +35,15 @@ ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO staff_permissions (id, category_id, name, display_name, description, resource, action, is_sensitive, requires_2fa, sort_order)
 VALUES
-    ('22222222-2222-2222-2222-222222222A01', '11111111-1111-1111-1111-111111111115', 'tax:view', 'View Tax Settings', 'View tax rates and configurations', 'tax', 'view', false, false, 1),
-    ('22222222-2222-2222-2222-222222222A02', '11111111-1111-1111-1111-111111111115', 'tax:rates:create', 'Create Tax Rates', 'Create new tax rates', 'rates', 'create', true, false, 2),
-    ('22222222-2222-2222-2222-222222222A03', '11111111-1111-1111-1111-111111111115', 'tax:rates:edit', 'Edit Tax Rates', 'Modify existing tax rates', 'rates', 'edit', true, false, 3),
-    ('22222222-2222-2222-2222-222222222A04', '11111111-1111-1111-1111-111111111115', 'tax:rates:delete', 'Delete Tax Rates', 'Delete tax rates', 'rates', 'delete', true, false, 4),
-    ('22222222-2222-2222-2222-222222222A05', '11111111-1111-1111-1111-111111111115', 'tax:jurisdictions:manage', 'Manage Jurisdictions', 'Configure tax jurisdictions', 'jurisdictions', 'manage', true, false, 5),
-    ('22222222-2222-2222-2222-222222222A06', '11111111-1111-1111-1111-111111111115', 'tax:categories:manage', 'Manage Tax Categories', 'Configure product tax categories', 'categories', 'manage', true, false, 6),
-    ('22222222-2222-2222-2222-222222222A07', '11111111-1111-1111-1111-111111111115', 'tax:exemptions:manage', 'Manage Exemptions', 'Configure tax exemptions', 'exemptions', 'manage', true, false, 7),
-    ('22222222-2222-2222-2222-222222222A08', '11111111-1111-1111-1111-111111111115', 'tax:reports:view', 'View Tax Reports', 'View tax calculation reports', 'reports', 'view', true, false, 8),
-    ('22222222-2222-2222-2222-222222222A09', '11111111-1111-1111-1111-111111111115', 'tax:reports:export', 'Export Tax Reports', 'Export tax data for filing', 'reports', 'export', true, false, 9)
+    ('22222222-2222-2222-2222-22222222A001', '11111111-1111-1111-1111-111111111115', 'tax:view', 'View Tax Settings', 'View tax rates and configurations', 'tax', 'view', false, false, 1),
+    ('22222222-2222-2222-2222-22222222A002', '11111111-1111-1111-1111-111111111115', 'tax:rates:create', 'Create Tax Rates', 'Create new tax rates', 'rates', 'create', true, false, 2),
+    ('22222222-2222-2222-2222-22222222A003', '11111111-1111-1111-1111-111111111115', 'tax:rates:edit', 'Edit Tax Rates', 'Modify existing tax rates', 'rates', 'edit', true, false, 3),
+    ('22222222-2222-2222-2222-22222222A004', '11111111-1111-1111-1111-111111111115', 'tax:rates:delete', 'Delete Tax Rates', 'Delete tax rates', 'rates', 'delete', true, false, 4),
+    ('22222222-2222-2222-2222-22222222A005', '11111111-1111-1111-1111-111111111115', 'tax:jurisdictions:manage', 'Manage Jurisdictions', 'Configure tax jurisdictions', 'jurisdictions', 'manage', true, false, 5),
+    ('22222222-2222-2222-2222-22222222A006', '11111111-1111-1111-1111-111111111115', 'tax:categories:manage', 'Manage Tax Categories', 'Configure product tax categories', 'categories', 'manage', true, false, 6),
+    ('22222222-2222-2222-2222-22222222A007', '11111111-1111-1111-1111-111111111115', 'tax:exemptions:manage', 'Manage Exemptions', 'Configure tax exemptions', 'exemptions', 'manage', true, false, 7),
+    ('22222222-2222-2222-2222-22222222A008', '11111111-1111-1111-1111-111111111115', 'tax:reports:view', 'View Tax Reports', 'View tax calculation reports', 'reports', 'view', true, false, 8),
+    ('22222222-2222-2222-2222-22222222A009', '11111111-1111-1111-1111-111111111115', 'tax:reports:export', 'Export Tax Reports', 'Export tax data for filing', 'reports', 'export', true, false, 9)
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================
@@ -52,13 +52,13 @@ ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO staff_permissions (id, category_id, name, display_name, description, resource, action, is_sensitive, requires_2fa, sort_order)
 VALUES
-    ('22222222-2222-2222-2222-222222222B01', '11111111-1111-1111-1111-111111111116', 'locations:view', 'View Locations', 'View store locations and addresses', 'locations', 'view', false, false, 1),
-    ('22222222-2222-2222-2222-222222222B02', '11111111-1111-1111-1111-111111111116', 'locations:create', 'Create Locations', 'Create new store locations', 'locations', 'create', true, false, 2),
-    ('22222222-2222-2222-2222-222222222B03', '11111111-1111-1111-1111-111111111116', 'locations:edit', 'Edit Locations', 'Modify location details', 'locations', 'edit', true, false, 3),
-    ('22222222-2222-2222-2222-222222222B04', '11111111-1111-1111-1111-111111111116', 'locations:delete', 'Delete Locations', 'Remove store locations', 'locations', 'delete', true, false, 4),
-    ('22222222-2222-2222-2222-222222222B05', '11111111-1111-1111-1111-111111111116', 'locations:hours:manage', 'Manage Hours', 'Set location operating hours', 'hours', 'manage', false, false, 5),
-    ('22222222-2222-2222-2222-222222222B06', '11111111-1111-1111-1111-111111111116', 'locations:inventory:manage', 'Manage Location Inventory', 'Manage inventory at specific locations', 'inventory', 'manage', false, false, 6),
-    ('22222222-2222-2222-2222-222222222B07', '11111111-1111-1111-1111-111111111116', 'locations:pickup:manage', 'Manage Pickup', 'Configure store pickup options', 'pickup', 'manage', false, false, 7)
+    ('22222222-2222-2222-2222-22222222B001', '11111111-1111-1111-1111-111111111116', 'locations:view', 'View Locations', 'View store locations and addresses', 'locations', 'view', false, false, 1),
+    ('22222222-2222-2222-2222-22222222B002', '11111111-1111-1111-1111-111111111116', 'locations:create', 'Create Locations', 'Create new store locations', 'locations', 'create', true, false, 2),
+    ('22222222-2222-2222-2222-22222222B003', '11111111-1111-1111-1111-111111111116', 'locations:edit', 'Edit Locations', 'Modify location details', 'locations', 'edit', true, false, 3),
+    ('22222222-2222-2222-2222-22222222B004', '11111111-1111-1111-1111-111111111116', 'locations:delete', 'Delete Locations', 'Remove store locations', 'locations', 'delete', true, false, 4),
+    ('22222222-2222-2222-2222-22222222B005', '11111111-1111-1111-1111-111111111116', 'locations:hours:manage', 'Manage Hours', 'Set location operating hours', 'hours', 'manage', false, false, 5),
+    ('22222222-2222-2222-2222-22222222B006', '11111111-1111-1111-1111-111111111116', 'locations:inventory:manage', 'Manage Location Inventory', 'Manage inventory at specific locations', 'inventory', 'manage', false, false, 6),
+    ('22222222-2222-2222-2222-22222222B007', '11111111-1111-1111-1111-111111111116', 'locations:pickup:manage', 'Manage Pickup', 'Configure store pickup options', 'pickup', 'manage', false, false, 7)
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================
