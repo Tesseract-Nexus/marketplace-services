@@ -92,7 +92,8 @@ func (c *VendorClient) GetVendorByID(tenantID, vendorID string) (*Vendor, error)
 		return nil, err
 	}
 
-	req.Header.Set("X-Tenant-ID", tenantID)
+	// Use Istio JWT claim headers for authentication
+	req.Header.Set("x-jwt-claim-tenant-id", tenantID)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -127,16 +128,17 @@ func (c *VendorClient) findVendorByNameWithContext(tenantID, name string, userCt
 		return nil, err
 	}
 
-	req.Header.Set("X-Tenant-ID", tenantID)
+	// Use Istio JWT claim headers for authentication (required by vendor-service)
+	req.Header.Set("x-jwt-claim-tenant-id", tenantID)
 	req.Header.Set("Content-Type", "application/json")
 
 	// Add user context headers for RBAC if provided
 	if userCtx != nil {
 		if userCtx.UserID != "" {
-			req.Header.Set("X-User-ID", userCtx.UserID)
+			req.Header.Set("x-jwt-claim-sub", userCtx.UserID)
 		}
 		if userCtx.UserEmail != "" {
-			req.Header.Set("X-User-Email", userCtx.UserEmail)
+			req.Header.Set("x-jwt-claim-email", userCtx.UserEmail)
 		}
 	}
 

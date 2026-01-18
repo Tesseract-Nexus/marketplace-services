@@ -143,7 +143,8 @@ func (c *CategoriesClient) GetCategoryByID(tenantID, categoryID string) (*Catego
 		return nil, err
 	}
 
-	req.Header.Set("X-Tenant-ID", tenantID)
+	// Use Istio JWT claim headers for authentication
+	req.Header.Set("x-jwt-claim-tenant-id", tenantID)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -178,16 +179,17 @@ func (c *CategoriesClient) findCategoryByNameWithContext(tenantID, name string, 
 		return nil, err
 	}
 
-	req.Header.Set("X-Tenant-ID", tenantID)
+	// Use Istio JWT claim headers for authentication (required by categories-service)
+	req.Header.Set("x-jwt-claim-tenant-id", tenantID)
 	req.Header.Set("Content-Type", "application/json")
 
 	// Add user context headers for RBAC if provided
 	if userCtx != nil {
 		if userCtx.UserID != "" {
-			req.Header.Set("X-User-ID", userCtx.UserID)
+			req.Header.Set("x-jwt-claim-sub", userCtx.UserID)
 		}
 		if userCtx.UserEmail != "" {
-			req.Header.Set("X-User-Email", userCtx.UserEmail)
+			req.Header.Set("x-jwt-claim-email", userCtx.UserEmail)
 		}
 	}
 
@@ -243,17 +245,18 @@ func (c *CategoriesClient) createCategoryWithContext(tenantID, createdByID strin
 		return nil, err
 	}
 
-	httpReq.Header.Set("X-Tenant-ID", tenantID)
-	httpReq.Header.Set("X-User-ID", createdByID)
+	// Use Istio JWT claim headers for authentication (required by categories-service)
+	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)
+	httpReq.Header.Set("x-jwt-claim-sub", createdByID)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Add user context headers for RBAC if provided
 	if userCtx != nil {
 		if userCtx.UserID != "" {
-			httpReq.Header.Set("X-User-ID", userCtx.UserID)
+			httpReq.Header.Set("x-jwt-claim-sub", userCtx.UserID)
 		}
 		if userCtx.UserEmail != "" {
-			httpReq.Header.Set("X-User-Email", userCtx.UserEmail)
+			httpReq.Header.Set("x-jwt-claim-email", userCtx.UserEmail)
 		}
 	}
 
@@ -288,7 +291,8 @@ func (c *CategoriesClient) DeleteCategory(tenantID, categoryID string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("X-Tenant-ID", tenantID)
+	// Use Istio JWT claim headers for authentication
+	req.Header.Set("x-jwt-claim-tenant-id", tenantID)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
