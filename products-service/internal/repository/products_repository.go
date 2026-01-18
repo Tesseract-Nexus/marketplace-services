@@ -101,6 +101,19 @@ func (r *ProductsRepository) CreateProduct(tenantID string, product *models.Prod
 	product.CreatedAt = time.Now()
 	product.UpdatedAt = time.Now()
 
+	// Ensure product has an ID before generating slug (for uniqueness)
+	if product.ID == uuid.Nil {
+		product.ID = uuid.New()
+	}
+
+	// Generate slug from name if not provided or empty
+	if product.Slug == nil || *product.Slug == "" {
+		baseSlug := generateSlug(product.Name)
+		// Ensure slug uniqueness by appending first 8 chars of product ID
+		uniqueSlug := fmt.Sprintf("%s-%s", baseSlug, product.ID.String()[:8])
+		product.Slug = &uniqueSlug
+	}
+
 	err := r.db.Create(product).Error
 	if err == nil {
 		// Invalidate list caches as a new product was added
@@ -789,6 +802,19 @@ func (r *ProductsRepository) BulkCreate(tenantID string, products []*models.Prod
 			product.CreatedAt = time.Now()
 			product.UpdatedAt = time.Now()
 
+			// Ensure product has an ID before generating slug (for uniqueness)
+			if product.ID == uuid.Nil {
+				product.ID = uuid.New()
+			}
+
+			// Generate slug from name if not provided or empty
+			if product.Slug == nil || *product.Slug == "" {
+				baseSlug := generateSlug(product.Name)
+				// Ensure slug uniqueness by appending first 8 chars of product ID
+				uniqueSlug := fmt.Sprintf("%s-%s", baseSlug, product.ID.String()[:8])
+				product.Slug = &uniqueSlug
+			}
+
 			// Check for duplicate SKU within tenant (including soft-deleted records for unique constraint)
 			var existingCount int64
 			if err := tx.Unscoped().Model(&models.Product{}).
@@ -958,6 +984,19 @@ func (r *ProductsRepository) BulkUpsert(tenantID string, products []*models.Prod
 			} else if err == gorm.ErrRecordNotFound {
 				// Product doesn't exist - create it
 				product.CreatedAt = time.Now()
+
+				// Ensure product has an ID before generating slug (for uniqueness)
+				if product.ID == uuid.Nil {
+					product.ID = uuid.New()
+				}
+
+				// Generate slug from name if not provided or empty
+				if product.Slug == nil || *product.Slug == "" {
+					baseSlug := generateSlug(product.Name)
+					// Ensure slug uniqueness by appending first 8 chars of product ID
+					uniqueSlug := fmt.Sprintf("%s-%s", baseSlug, product.ID.String()[:8])
+					product.Slug = &uniqueSlug
+				}
 
 				// Set default status if not provided
 				if product.Status == "" {
