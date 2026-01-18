@@ -16,6 +16,8 @@ type RBACRepositoryInterface interface {
 	GetStaffRoles(tenantID string, vendorID *string, staffID uuid.UUID) ([]models.RoleAssignment, error)
 	GetRoleByName(tenantID string, vendorID *string, name string) (*models.Role, error)
 	AssignRole(tenantID string, vendorID *string, assignment *models.RoleAssignment) error
+	SeedDefaultRoles(tenantID string, vendorID *string) error
+	SeedVendorRoles(tenantID string, vendorID string) error
 }
 
 // StaffRepositoryInterface defines the repository methods needed for role sync
@@ -67,20 +69,22 @@ var VendorRoleNames = map[string]bool{
 
 // KeycloakRoleSyncService handles synchronization of Keycloak roles to staff-service
 type KeycloakRoleSyncService struct {
-	rbacRepo     RBACRepositoryInterface
-	staffRepo    StaffRepositoryInterface
-	logger       *logrus.Entry
-	roleMappings map[string]KeycloakRoleMapping // keycloakRole -> mapping
-	mu           sync.RWMutex
+	rbacRepo      RBACRepositoryInterface
+	staffRepo     StaffRepositoryInterface
+	logger        *logrus.Entry
+	roleMappings  map[string]KeycloakRoleMapping // keycloakRole -> mapping
+	seededTenants map[string]bool                // track which tenants have been seeded
+	mu            sync.RWMutex
 }
 
 // NewKeycloakRoleSyncService creates a new role sync service
 func NewKeycloakRoleSyncService(rbacRepo RBACRepositoryInterface, staffRepo StaffRepositoryInterface, logger *logrus.Entry) *KeycloakRoleSyncService {
 	service := &KeycloakRoleSyncService{
-		rbacRepo:     rbacRepo,
-		staffRepo:    staffRepo,
-		logger:       logger,
-		roleMappings: make(map[string]KeycloakRoleMapping),
+		rbacRepo:      rbacRepo,
+		staffRepo:     staffRepo,
+		logger:        logger,
+		roleMappings:  make(map[string]KeycloakRoleMapping),
+		seededTenants: make(map[string]bool),
 	}
 
 	// Initialize default mappings
@@ -195,14 +199,34 @@ func (s *KeycloakRoleSyncService) SyncRolesForStaff(
 }
 
 // assignRoleByName finds a role by name and assigns it to the staff member
+// If the role doesn't exist, it will attempt to seed default roles first
 func (s *KeycloakRoleSyncService) assignRoleByName(tenantID string, vendorID *string, staffID uuid.UUID, roleName string) error {
 	role, err := s.rbacRepo.GetRoleByName(tenantID, vendorID, roleName)
 	if err != nil {
 		return fmt.Errorf("failed to find role %s: %w", roleName, err)
 	}
 
+	// If role doesn't exist, try to seed roles first
 	if role == nil {
-		return fmt.Errorf("role %s not found in tenant", roleName)
+		s.logger.WithFields(logrus.Fields{
+			"role_name": roleName,
+			"tenant_id": tenantID,
+			"vendor_id": vendorID,
+		}).Info("Role not found, attempting to seed default roles")
+
+		// Seed roles for this tenant/vendor
+		if err := s.ensureRolesSeeded(tenantID, vendorID); err != nil {
+			s.logger.WithError(err).Warn("Failed to seed roles")
+		}
+
+		// Try to find the role again after seeding
+		role, err = s.rbacRepo.GetRoleByName(tenantID, vendorID, roleName)
+		if err != nil {
+			return fmt.Errorf("failed to find role %s after seeding: %w", roleName, err)
+		}
+		if role == nil {
+			return fmt.Errorf("role %s still not found after seeding", roleName)
+		}
 	}
 
 	assignment := &models.RoleAssignment{
@@ -223,6 +247,49 @@ func (s *KeycloakRoleSyncService) assignRoleByName(tenantID string, vendorID *st
 		"staff_id":  staffID,
 		"vendor_id": vendorID,
 	}).Info("Role assigned from Keycloak")
+
+	return nil
+}
+
+// ensureRolesSeeded ensures that default roles are seeded for the tenant
+// This is idempotent - roles won't be duplicated if they already exist
+func (s *KeycloakRoleSyncService) ensureRolesSeeded(tenantID string, vendorID *string) error {
+	// Create a cache key for this tenant+vendor combination
+	cacheKey := tenantID
+	if vendorID != nil {
+		cacheKey = tenantID + ":" + *vendorID
+	}
+
+	// Check if we've already seeded this tenant (in-memory cache to avoid repeated DB calls)
+	if s.seededTenants[cacheKey] {
+		return nil
+	}
+
+	// Seed default roles for the tenant
+	s.logger.WithFields(logrus.Fields{
+		"tenant_id": tenantID,
+		"vendor_id": vendorID,
+	}).Info("Seeding default roles for tenant")
+
+	if err := s.rbacRepo.SeedDefaultRoles(tenantID, nil); err != nil {
+		return fmt.Errorf("failed to seed default roles: %w", err)
+	}
+
+	// If vendor context provided, also seed vendor-specific roles
+	if vendorID != nil && *vendorID != "" {
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id": tenantID,
+			"vendor_id": *vendorID,
+		}).Info("Seeding vendor roles")
+
+		if err := s.rbacRepo.SeedVendorRoles(tenantID, *vendorID); err != nil {
+			s.logger.WithError(err).Warn("Failed to seed vendor roles (may already exist)")
+			// Don't return error - vendor roles are optional
+		}
+	}
+
+	// Mark as seeded
+	s.seededTenants[cacheKey] = true
 
 	return nil
 }
