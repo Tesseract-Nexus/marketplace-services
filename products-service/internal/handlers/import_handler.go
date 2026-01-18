@@ -359,8 +359,16 @@ func (h *ImportHandler) processImportWithBatching(
 		result.UpdatedIDs = append(result.UpdatedIDs, batchResult.UpdatedIDs...)
 	}
 
-	result.SuccessCount = result.CreatedCount + result.UpdatedCount
-	result.Success = result.SuccessCount > 0 || result.SkippedCount > 0
+	// For validation mode (validateOnly=true), SuccessCount = valid rows (not created/updated)
+	// For actual import, SuccessCount = created + updated
+	if validateOnly {
+		// In validation mode, success count is total rows minus failed rows
+		result.SuccessCount = totalRows - result.FailedCount
+		result.Success = result.SuccessCount > 0
+	} else {
+		result.SuccessCount = result.CreatedCount + result.UpdatedCount
+		result.Success = result.SuccessCount > 0 || result.SkippedCount > 0
+	}
 
 	return result
 }
