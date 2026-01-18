@@ -289,7 +289,10 @@ func main() {
 	api.Use(sharedMiddleware.IstioAuth(sharedMiddleware.IstioAuthConfig{
 		RequireAuth:        true,
 		AllowLegacyHeaders: false,
-		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+		// Skip auth for health checks and RBAC inter-service endpoints
+		// The /api/v1/rbac/staff endpoint is called by other services for permission verification
+		// and doesn't have JWT tokens in service-to-service calls through Istio mesh
+		SkipPaths: []string{"/health", "/ready", "/metrics", "/swagger", "/api/v1/rbac/staff"},
 	}))
 
 	// SEC-003: Resolve Keycloak user ID to internal staff ID
