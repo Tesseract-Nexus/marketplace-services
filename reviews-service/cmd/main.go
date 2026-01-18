@@ -14,6 +14,7 @@ import (
 	"reviews-service/internal/events"
 	"reviews-service/internal/handlers"
 	"reviews-service/internal/middleware"
+	"reviews-service/internal/models"
 	"reviews-service/internal/repository"
 
 	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
@@ -54,6 +55,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
+
+	// Auto-migrate models
+	if err := db.AutoMigrate(&models.Review{}); err != nil {
+		log.Fatal("Failed to migrate database:", err)
+	}
+	log.Println("✓ Database migration completed")
 
 	// Initialize logrus logger
 	logger := logrus.New()
@@ -120,6 +127,11 @@ func main() {
 		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
+
+	// TenantMiddleware extracts tenant_id from X-Tenant-ID header when not set by IstioAuth
+	// This is required because admin BFF sends X-Tenant-ID header, not Istio JWT claims
+	api.Use(middleware.TenantMiddleware())
+	log.Println("✓ Tenant middleware initialized")
 
 	// API routes with RBAC
 	v1 := api.Group("")
