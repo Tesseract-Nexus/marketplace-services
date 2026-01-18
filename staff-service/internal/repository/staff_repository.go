@@ -162,7 +162,9 @@ func (r *staffRepository) GetByKeycloakUserID(tenantID, keycloakUserID string) (
 
 func (r *staffRepository) GetByEmail(tenantID, email string) (*models.Staff, error) {
 	var staff models.Staff
-	err := r.db.Where("tenant_id = ? AND email = ?", tenantID, email).
+	// Use LOWER() for case-insensitive email matching
+	// This fixes RBAC lookup failures when Keycloak email case differs from staff-service
+	err := r.db.Where("tenant_id = ? AND LOWER(email) = LOWER(?)", tenantID, email).
 		First(&staff).Error
 
 	if err != nil {
@@ -176,7 +178,8 @@ func (r *staffRepository) GetByEmail(tenantID, email string) (*models.Staff, err
 // Used for login tenant lookup to show which tenants a user can log into
 func (r *staffRepository) GetAllByEmail(email string) ([]models.Staff, error) {
 	var staffList []models.Staff
-	err := r.db.Where("email = ? AND is_active = ? AND account_status = ?", email, true, "active").
+	// Use LOWER() for case-insensitive email matching
+	err := r.db.Where("LOWER(email) = LOWER(?) AND is_active = ? AND account_status = ?", email, true, "active").
 		Find(&staffList).Error
 
 	if err != nil {

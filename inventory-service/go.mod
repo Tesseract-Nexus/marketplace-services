@@ -3,7 +3,7 @@ module inventory-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.0-20260116034007-544b3ae653eb
+	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260118074104-d2acff79239a
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
