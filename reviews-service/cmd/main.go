@@ -121,17 +121,12 @@ func main() {
 
 	// Authentication middleware using Istio JWT claims
 	// Istio validates JWT and injects x-jwt-claim-* headers
-	// AllowLegacyHeaders provides backward compatibility during migration
+	// This matches the pattern used by products-service and categories-service
 	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
 		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
-
-	// TenantMiddleware extracts tenant_id from X-Tenant-ID header when not set by IstioAuth
-	// This is required because admin BFF sends X-Tenant-ID header, not Istio JWT claims
-	api.Use(middleware.TenantMiddleware())
-	log.Println("✓ Tenant middleware initialized")
 
 	// API routes with RBAC
 	v1 := api.Group("")

@@ -115,30 +115,14 @@ func main() {
 	// Protected API routes
 	api := router.Group("/api/v1")
 
-	// Initialize Istio auth middleware for Keycloak JWT validation
-	// During migration, AllowLegacyHeaders enables fallback to X-* headers from auth-bff
-	istioAuthLogger := logrus.NewEntry(logrus.StandardLogger()).WithField("component", "istio_auth")
-	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+	// Authentication middleware using Istio JWT claims
+	// Istio validates JWT and injects x-jwt-claim-* headers
+	// This matches the pattern used by products-service and categories-service
+	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
 		AllowLegacyHeaders: false,
-		Logger:             istioAuthLogger,
-	})
-
-	// Authentication middleware
-	// In development: use DevelopmentAuthMiddleware for local testing
-	// In production: use IstioAuth which reads x-jwt-claim-* headers from Istio
-	//                or falls back to X-* headers from auth-bff during migration
-	if cfg.Environment == "development" {
-		api.Use(middleware.DevelopmentAuthMiddleware())
-		api.Use(middleware.TenantMiddleware())
-	} else {
-		api.Use(istioAuth)
-		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
-		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
-		api.Use(middleware.TenantMiddleware())
-		// Vendor isolation for marketplace mode
-		api.Use(gosharedmw.VendorScopeFilter())
-	}
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+	}))
 
 	// API routes with RBAC
 	v1 := api.Group("")
