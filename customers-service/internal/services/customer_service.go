@@ -35,8 +35,10 @@ func (s *CustomerService) SetSegmentEvaluator(evaluator *SegmentEvaluator) {
 }
 
 // CreateCustomerRequest represents request to create a customer
+// Note: TenantID is NOT binding:required because it comes from the X-Tenant-ID header,
+// not from the request body. The handler must extract it from context.
 type CreateCustomerRequest struct {
-	TenantID       string               `json:"tenantId" binding:"required"`
+	TenantID       string               `json:"tenantId"`
 	UserID         *uuid.UUID           `json:"userId"`
 	Email          string               `json:"email" binding:"required,email"`
 	FirstName      string               `json:"firstName" binding:"required"`

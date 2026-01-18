@@ -30,11 +30,24 @@ func NewCustomerHandler(service *services.CustomerService) *CustomerHandler {
 
 // CreateCustomer handles POST /api/v1/customers
 func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
+	// Extract tenant_id from context (set by TenantMiddleware from X-Tenant-ID header)
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		tenantID = c.Query("tenant_id")
+	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required (via X-Tenant-ID header or query param)"})
+		return
+	}
+
 	var req services.CreateCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Set tenant_id from context (it comes from header, not request body)
+	req.TenantID = tenantID
 
 	customer, err := h.service.CreateCustomer(c.Request.Context(), req)
 	if err != nil {
