@@ -143,10 +143,29 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Tenant middleware - extracts X-Tenant-ID header and sets in context
-	router.Use(middleware.TenantMiddleware())
-	// User middleware - extracts X-User-ID header for RBAC permission checks
-	router.Use(middleware.UserMiddleware())
+	// Initialize Istio auth middleware for Keycloak JWT validation in production
+	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        true,
+		AllowLegacyHeaders: false,
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/internal/"},
+	})
+
+	// Authentication middleware - environment-aware
+	// In production: Use Istio JWT claim headers (x-jwt-claim-*)
+	// In development: Use simple header-based auth for testing
+	if cfg.Environment == "production" {
+		router.Use(istioAuth)
+		// TenantMiddleware ensures tenant_id is always extracted from X-Tenant-ID header
+		// This is critical when Istio JWT claim headers are not present (e.g., BFF requests)
+		router.Use(middleware.TenantMiddleware())
+		router.Use(gosharedmw.VendorScopeFilter())
+		log.Println("✓ Using Istio auth middleware (production mode)")
+	} else {
+		// Development mode: use simple header extraction
+		router.Use(middleware.TenantMiddleware())
+		router.Use(middleware.UserMiddleware())
+		log.Println("✓ Using development auth middleware")
+	}
 
 	// Health endpoints
 	router.GET("/health", healthHandler.HealthCheck)
