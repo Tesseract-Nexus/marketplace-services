@@ -47,6 +47,11 @@ type Config struct {
 	KeycloakUsername     string // For password grant (admin user)
 	KeycloakPassword     string // For password grant (admin password)
 
+	// RBAC Role Sync
+	RBACAutoSyncRoles    bool // Enable automatic role sync from Keycloak
+	RBACSyncCacheTTL     int  // Seconds to cache role sync status (prevent sync on every request)
+	RBACSeedDefaultRoles bool // Seed default roles on startup for existing tenants
+
 	// Pagination
 	DefaultPageSize int
 	MaxPageSize     int
@@ -56,9 +61,14 @@ func Load() *Config {
 	dbPort, _ := strconv.Atoi(getEnv("DB_PORT", "5432"))
 	redisPort, _ := strconv.Atoi(getEnv("REDIS_PORT", "6379"))
 	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
-	cacheTTL, _ := strconv.Atoi(getEnv("CACHE_TTL", "300")) // 5 minutes default
+	cacheTTL, _ := strconv.Atoi(getEnv("CACHE_TTL", "300"))            // 5 minutes default
+	rbacSyncCacheTTL, _ := strconv.Atoi(getEnv("RBAC_SYNC_CACHE_TTL", "300")) // 5 minutes default
 	defaultPageSize, _ := strconv.Atoi(getEnv("DEFAULT_PAGE_SIZE", "20"))
 	maxPageSize, _ := strconv.Atoi(getEnv("MAX_PAGE_SIZE", "100"))
+
+	// RBAC configuration - defaults to enabled
+	rbacAutoSyncRoles := getEnv("RBAC_AUTO_SYNC_ROLES", "true") == "true"
+	rbacSeedDefaultRoles := getEnv("RBAC_SEED_DEFAULT_ROLES", "true") == "true"
 
 	return &Config{
 		// Database
@@ -88,12 +98,17 @@ func Load() *Config {
 		ProductID:          getEnv("PRODUCT_ID", "marketplace"),
 
 		// Keycloak
-		KeycloakBaseURL:      getEnv("KEYCLOAK_BASE_URL", "https://devtest-internal-idp.tesserix.app"),
-		KeycloakRealm:        getEnv("KEYCLOAK_REALM", "tesserix-internal"),
+		KeycloakBaseURL:      getEnv("KEYCLOAK_BASE_URL", "https://devtest-customer-idp.tesserix.app"),
+		KeycloakRealm:        getEnv("KEYCLOAK_REALM", "tesserix-customer"),
 		KeycloakClientID:     getEnv("KEYCLOAK_ADMIN_CLIENT_ID", "admin-cli"),
 		KeycloakClientSecret: secrets.GetSecretOrEnv("KEYCLOAK_ADMIN_CLIENT_SECRET_NAME", "KEYCLOAK_ADMIN_CLIENT_SECRET", ""),
 		KeycloakUsername:     secrets.GetSecretOrEnv("KEYCLOAK_ADMIN_USERNAME_SECRET_NAME", "KEYCLOAK_ADMIN_USERNAME", ""),
 		KeycloakPassword:     secrets.GetSecretOrEnv("KEYCLOAK_ADMIN_PASSWORD_SECRET_NAME", "KEYCLOAK_ADMIN_PASSWORD", ""),
+
+		// RBAC Role Sync
+		RBACAutoSyncRoles:    rbacAutoSyncRoles,
+		RBACSyncCacheTTL:     rbacSyncCacheTTL,
+		RBACSeedDefaultRoles: rbacSeedDefaultRoles,
 
 		// Pagination
 		DefaultPageSize: defaultPageSize,

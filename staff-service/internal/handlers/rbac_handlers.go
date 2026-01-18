@@ -1864,6 +1864,82 @@ func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 	})
 }
 
+// SyncMyRoles manually triggers Keycloak role synchronization for the current user
+// This is a self-service endpoint - no RBAC permissions required
+// @Summary Sync current user's roles from Keycloak
+// @Description Manually trigger synchronization of Keycloak realm roles to staff-service RBAC database
+// @Tags Me
+// @Produce json
+// @Success 200 {object} models.SuccessResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /me/sync-roles [post]
+func (h *RBACHandler) SyncMyRoles(c *gin.Context) {
+	tenantID, vendorID := h.getTenantAndVendor(c)
+
+	// Get user ID from context
+	userIDStr := c.GetString("staff_id")
+	if userIDStr == "" {
+		userIDStr = c.GetString("user_id")
+	}
+	if userIDStr == "" {
+		userIDStr = c.GetHeader("X-User-ID")
+	}
+	if userIDStr == "" {
+		userIDStr = c.GetHeader("x-jwt-claim-sub")
+	}
+
+	if userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Success: false,
+			Error:   models.Error{Code: "UNAUTHORIZED", Message: "User ID not found in context"},
+		})
+		return
+	}
+
+	// Try to find the staff record
+	var staffID uuid.UUID
+	staffByKeycloak, _ := h.staffRepo.GetByKeycloakUserID(tenantID, userIDStr)
+	if staffByKeycloak != nil {
+		staffID = staffByKeycloak.ID
+	} else {
+		// Try parsing as UUID directly
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{
+				Success: false,
+				Error:   models.Error{Code: "INVALID_ID", Message: "Invalid user ID format"},
+			})
+			return
+		}
+		staff, _ := h.staffRepo.GetByID(tenantID, userID)
+		if staff != nil {
+			staffID = staff.ID
+		} else {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				Success: false,
+				Error:   models.Error{Code: "NOT_FOUND", Message: "Staff record not found"},
+			})
+			return
+		}
+	}
+
+	// Perform the role sync
+	h.syncKeycloakRoles(c, tenantID, vendorID, staffID)
+
+	// Invalidate cache to ensure fresh permissions on next request
+	h.invalidateStaffCache(tenantID, vendorID, staffID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Keycloak roles synchronized successfully",
+		"data": map[string]interface{}{
+			"staff_id":  staffID,
+			"tenant_id": tenantID,
+		},
+	})
+}
+
 // SetPrimaryRole sets the primary role for a staff member
 func (h *RBACHandler) SetPrimaryRole(c *gin.Context) {
 	tenantID, vendorID := h.getTenantAndVendor(c)

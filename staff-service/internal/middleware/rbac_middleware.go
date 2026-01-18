@@ -8,34 +8,63 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"staff-service/internal/cache"
 	"staff-service/internal/models"
 	"staff-service/internal/repository"
+	"staff-service/internal/services"
 )
 
 // RBACMiddleware provides RBAC-based authorization
 type RBACMiddleware struct {
-	rbacRepo  repository.RBACRepository
-	staffRepo repository.StaffRepository
-	permCache *cache.PermissionCache
+	rbacRepo        repository.RBACRepository
+	staffRepo       repository.StaffRepository
+	permCache       *cache.PermissionCache
+	roleSyncService *services.KeycloakRoleSyncService
+	roleSyncEnabled bool
+	roleSyncCache   *cache.PermissionCache // Reuse permission cache for role sync tracking
+	logger          *logrus.Entry
 }
 
 // NewRBACMiddleware creates a new RBAC middleware
 func NewRBACMiddleware(rbacRepo repository.RBACRepository, staffRepo repository.StaffRepository) *RBACMiddleware {
 	return &RBACMiddleware{
-		rbacRepo:  rbacRepo,
-		staffRepo: staffRepo,
-		permCache: nil,
+		rbacRepo:        rbacRepo,
+		staffRepo:       staffRepo,
+		permCache:       nil,
+		roleSyncEnabled: false,
+		logger:          logrus.WithField("component", "rbac_middleware"),
 	}
 }
 
 // NewRBACMiddlewareWithCache creates a new RBAC middleware with caching
 func NewRBACMiddlewareWithCache(rbacRepo repository.RBACRepository, staffRepo repository.StaffRepository, permCache *cache.PermissionCache) *RBACMiddleware {
 	return &RBACMiddleware{
-		rbacRepo:  rbacRepo,
-		staffRepo: staffRepo,
-		permCache: permCache,
+		rbacRepo:        rbacRepo,
+		staffRepo:       staffRepo,
+		permCache:       permCache,
+		roleSyncEnabled: false,
+		logger:          logrus.WithField("component", "rbac_middleware"),
 	}
+}
+
+// NewRBACMiddlewareWithRoleSync creates a new RBAC middleware with role sync enabled
+func NewRBACMiddlewareWithRoleSync(rbacRepo repository.RBACRepository, staffRepo repository.StaffRepository, permCache *cache.PermissionCache, roleSyncService *services.KeycloakRoleSyncService) *RBACMiddleware {
+	return &RBACMiddleware{
+		rbacRepo:        rbacRepo,
+		staffRepo:       staffRepo,
+		permCache:       permCache,
+		roleSyncService: roleSyncService,
+		roleSyncEnabled: true,
+		roleSyncCache:   permCache, // Reuse for tracking last sync time
+		logger:          logrus.WithField("component", "rbac_middleware"),
+	}
+}
+
+// SetRoleSyncService enables role sync with the provided service
+func (m *RBACMiddleware) SetRoleSyncService(service *services.KeycloakRoleSyncService) {
+	m.roleSyncService = service
+	m.roleSyncEnabled = service != nil
 }
 
 // GetCache returns the permission cache (for invalidation purposes)
@@ -481,6 +510,7 @@ func getStaffUUID(c *gin.Context) uuid.UUID {
 
 // ResolveStaffFromKeycloakID middleware that looks up staff by Keycloak user ID
 // This should be applied before RBAC checks to map X-User-ID (Keycloak ID) to internal staff ID
+// Also triggers automatic role sync from Keycloak if enabled
 func (m *RBACMiddleware) ResolveStaffFromKeycloakID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.GetString("tenant_id")
@@ -506,6 +536,12 @@ func (m *RBACMiddleware) ResolveStaffFromKeycloakID() gin.HandlerFunc {
 				c.Set("resolved_staff_id", staff.ID)
 				c.Set("staff_id", staff.ID.String())
 				c.Set("user_id", staff.ID.String()) // Also update user_id for compatibility
+
+				// ROLE-SYNC: Trigger automatic role sync from Keycloak if enabled
+				if m.roleSyncEnabled && m.roleSyncService != nil {
+					m.syncKeycloakRoles(c, tenantID, staff.ID)
+				}
+
 				c.Next()
 				return
 			}
@@ -515,6 +551,81 @@ func (m *RBACMiddleware) ResolveStaffFromKeycloakID() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// syncKeycloakRoles triggers role sync from Keycloak JWT claims to staff-service database
+// This runs asynchronously to not block the request
+func (m *RBACMiddleware) syncKeycloakRoles(c *gin.Context, tenantID string, staffID uuid.UUID) {
+	// Extract Keycloak roles from Istio JWT headers
+	// Istio sets these headers after JWT validation:
+	// - x-jwt-claim-realm_access: Contains realm roles
+	// - x-jwt-claim-roles: Contains flattened role array
+	// - x-jwt-claim-platform_owner: Boolean for platform owner status
+
+	// Get roles from x-jwt-claim-roles header (comma-separated or JSON array)
+	rolesHeader := c.GetHeader("x-jwt-claim-roles")
+	if rolesHeader == "" {
+		// Try alternate header names
+		rolesHeader = c.GetHeader("X-Jwt-Claim-Roles")
+	}
+
+	// Parse roles from header
+	var keycloakRoles []string
+	if rolesHeader != "" {
+		// Handle comma-separated format
+		rolesHeader = strings.Trim(rolesHeader, "[]\"")
+		for _, role := range strings.Split(rolesHeader, ",") {
+			role = strings.TrimSpace(role)
+			role = strings.Trim(role, "\"")
+			if role != "" {
+				keycloakRoles = append(keycloakRoles, role)
+			}
+		}
+	}
+
+	// Check for platform owner claim
+	isPlatformOwner := false
+	platformOwnerHeader := c.GetHeader("x-jwt-claim-platform_owner")
+	if platformOwnerHeader == "" {
+		platformOwnerHeader = c.GetHeader("X-Jwt-Claim-Platform-Owner")
+	}
+	if platformOwnerHeader == "true" || platformOwnerHeader == "1" {
+		isPlatformOwner = true
+	}
+
+	// Skip sync if no roles to sync
+	if len(keycloakRoles) == 0 && !isPlatformOwner {
+		return
+	}
+
+	// Get vendor ID if present (for vendor-scoped roles)
+	var vendorID *string
+	if vid := c.GetString("vendor_id"); vid != "" {
+		vendorID = &vid
+	}
+
+	// Run sync asynchronously to not block the request
+	go func() {
+		ctx := context.Background()
+		if err := m.roleSyncService.SyncRolesForStaff(ctx, tenantID, vendorID, staffID, keycloakRoles, isPlatformOwner); err != nil {
+			m.logger.WithError(err).WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"staff_id":  staffID,
+				"roles":     keycloakRoles,
+			}).Warn("Failed to sync Keycloak roles")
+		} else {
+			m.logger.WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"staff_id":  staffID,
+				"roles":     keycloakRoles,
+			}).Debug("Keycloak roles synced successfully")
+		}
+
+		// Invalidate permission cache after role sync
+		if m.permCache != nil {
+			_ = m.permCache.Invalidate(ctx, tenantID, vendorID, staffID)
+		}
+	}()
 }
 
 func getVendorIDPtr(c *gin.Context) *string {

@@ -20,6 +20,7 @@ import (
 	"staff-service/internal/handlers"
 	"staff-service/internal/middleware"
 	"staff-service/internal/repository"
+	"staff-service/internal/services"
 )
 
 // @title Staff Management API
@@ -162,8 +163,26 @@ func main() {
 	authHandler := handlers.NewAuthHandlerWithKeycloak(staffRepo, authRepo, cfg.JWTSecret, keycloakClient)
 	importHandler := handlers.NewImportHandler(staffRepo)
 
+	// ROLE-SYNC: Initialize Keycloak role sync service for automatic role synchronization
+	// This syncs Keycloak realm roles to staff-service RBAC database on each authenticated request
+	var roleSyncService *services.KeycloakRoleSyncService
+	if cfg.RBACAutoSyncRoles {
+		roleSyncLogger := logrus.WithField("component", "keycloak_role_sync")
+		roleSyncService = services.NewKeycloakRoleSyncService(rbacRepo, staffRepo, roleSyncLogger)
+		log.Printf("✓ Keycloak role sync service initialized (auto-sync enabled)")
+	} else {
+		log.Printf("⚠ Keycloak role sync disabled (RBAC_AUTO_SYNC_ROLES=false)")
+	}
+
 	// SEC-002: Initialize RBAC middleware for route protection with caching
-	rbacMiddleware := middleware.NewRBACMiddlewareWithCache(rbacRepo, staffRepo, permCache)
+	var rbacMiddleware *middleware.RBACMiddleware
+	if roleSyncService != nil {
+		// Use middleware with role sync enabled
+		rbacMiddleware = middleware.NewRBACMiddlewareWithRoleSync(rbacRepo, staffRepo, permCache, roleSyncService)
+	} else {
+		// Fallback to middleware without role sync
+		rbacMiddleware = middleware.NewRBACMiddlewareWithCache(rbacRepo, staffRepo, permCache)
+	}
 
 	// Initialize Gin router
 	if cfg.Environment == "production" {
@@ -404,6 +423,8 @@ func main() {
 		{
 			// Get current user's effective permissions (for frontend bootstrap)
 			me.GET("/permissions", rbacHandler.GetMyEffectivePermissions)
+			// Manually trigger Keycloak role sync for current user
+			me.POST("/sync-roles", rbacHandler.SyncMyRoles)
 		}
 
 		// Document management routes - SEC-002: Apply RBAC

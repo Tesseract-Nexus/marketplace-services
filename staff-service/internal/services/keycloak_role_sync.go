@@ -32,26 +32,28 @@ type KeycloakRoleMapping struct {
 
 // DefaultRoleMappings defines the mapping between Keycloak roles and staff-service roles
 // These mappings should match the roles seeded in staff-service migrations
+// FIX-ROLE-SYNC-001: Use slug names (e.g., "store_owner") not display names (e.g., "Store Owner")
+// The database stores roles with the slug as the `name` field, not the display name
 var DefaultRoleMappings = []KeycloakRoleMapping{
 	// Platform-level role (cross-tenant access)
-	{KeycloakRole: "platform_owner", RoleName: "Platform Owner", Priority: 200},
+	{KeycloakRole: "platform_owner", RoleName: "platform_owner", Priority: 200},
 
 	// Tenant-level roles (marketplace owner/admin roles, vendor_id = NULL)
-	{KeycloakRole: "store_owner", RoleName: "Store Owner", Priority: 100},
-	{KeycloakRole: "store_admin", RoleName: "Store Admin", Priority: 90},
-	{KeycloakRole: "store_manager", RoleName: "Store Manager", Priority: 70},
-	{KeycloakRole: "marketing_specialist", RoleName: "Marketing Specialist", Priority: 60},
-	{KeycloakRole: "inventory_specialist", RoleName: "Inventory Specialist", Priority: 60},
-	{KeycloakRole: "order_specialist", RoleName: "Order Specialist", Priority: 60},
-	{KeycloakRole: "customer_support", RoleName: "Customer Support", Priority: 50},
-	{KeycloakRole: "viewer", RoleName: "Viewer", Priority: 10},
+	{KeycloakRole: "store_owner", RoleName: "store_owner", Priority: 100},
+	{KeycloakRole: "store_admin", RoleName: "store_admin", Priority: 90},
+	{KeycloakRole: "store_manager", RoleName: "store_manager", Priority: 70},
+	{KeycloakRole: "marketing_specialist", RoleName: "marketing_specialist", Priority: 60},
+	{KeycloakRole: "inventory_specialist", RoleName: "inventory_specialist", Priority: 60},
+	{KeycloakRole: "order_specialist", RoleName: "order_specialist", Priority: 60},
+	{KeycloakRole: "customer_support", RoleName: "customer_support", Priority: 50},
+	{KeycloakRole: "viewer", RoleName: "viewer", Priority: 10},
 
 	// Vendor-level roles (scoped to specific vendor in marketplace mode)
 	// Note: These roles are only synced when vendorID is provided
-	{KeycloakRole: "vendor_owner", RoleName: "Vendor Owner", Priority: 80},
-	{KeycloakRole: "vendor_admin", RoleName: "Vendor Admin", Priority: 75},
-	{KeycloakRole: "vendor_manager", RoleName: "Vendor Manager", Priority: 65},
-	{KeycloakRole: "vendor_staff", RoleName: "Vendor Staff", Priority: 55},
+	{KeycloakRole: "vendor_owner", RoleName: "vendor_owner", Priority: 80},
+	{KeycloakRole: "vendor_admin", RoleName: "vendor_admin", Priority: 75},
+	{KeycloakRole: "vendor_manager", RoleName: "vendor_manager", Priority: 65},
+	{KeycloakRole: "vendor_staff", RoleName: "vendor_staff", Priority: 55},
 }
 
 // VendorRoleNames is the list of vendor-scoped role keycloak names
