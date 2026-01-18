@@ -2,6 +2,22 @@
 -- Adds permissions for: Tickets, Vendors, Approvals, Storefronts
 
 -- ============================================================================
+-- CREATE ROLE DEFAULT PERMISSIONS TABLE (if not exists)
+-- This table maps role names to default permission names for easy seeding
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS staff_role_default_permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_name VARCHAR(100) NOT NULL,
+    permission_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE(role_name, permission_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_staff_role_default_permissions_role ON staff_role_default_permissions(role_name);
+CREATE INDEX IF NOT EXISTS idx_staff_role_default_permissions_perm ON staff_role_default_permissions(permission_name);
+
+-- ============================================================================
 -- NEW PERMISSION CATEGORIES
 -- ============================================================================
 
