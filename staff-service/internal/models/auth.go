@@ -522,6 +522,7 @@ type StaffSessionListResponse struct {
 type InvitationVerifyResponse struct {
 	Valid               bool              `json:"valid"`
 	Staff               *Staff            `json:"staff,omitempty"`
+	ActivationToken     string            `json:"activationToken,omitempty"` // Token to use for activation
 	AuthMethodOptions   []StaffAuthMethod `json:"authMethodOptions,omitempty"`
 	ExpiresAt           *time.Time        `json:"expiresAt,omitempty"`
 	Message             string            `json:"message,omitempty"`

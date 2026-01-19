@@ -924,6 +924,7 @@ func (h *AuthHandler) VerifyInvitation(c *gin.Context) {
 		c.JSON(http.StatusOK, models.InvitationVerifyResponse{
 			Valid:               true,
 			Staff:               staff,
+			ActivationToken:     staff.ActivationToken, // Return token for use in activation
 			AuthMethodOptions:   authOptions,
 			ExpiresAt:           staff.ActivationTokenExpiresAt,
 			GoogleEnabled:       ssoConfig != nil && ssoConfig.GoogleEnabled,
@@ -952,6 +953,7 @@ func (h *AuthHandler) VerifyInvitation(c *gin.Context) {
 	c.JSON(http.StatusOK, models.InvitationVerifyResponse{
 		Valid:               true,
 		Staff:               invitation.Staff,
+		ActivationToken:     invitation.Staff.ActivationToken, // Return token for use in activation
 		AuthMethodOptions:   authOptions,
 		ExpiresAt:           &invitation.ExpiresAt,
 		GoogleEnabled:       ssoConfig != nil && ssoConfig.GoogleEnabled,
