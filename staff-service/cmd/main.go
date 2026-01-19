@@ -244,9 +244,15 @@ func main() {
 
 	// Staff invitation and activation routes (kept - unique to staff-service)
 	// These are used for staff onboarding and don't issue tokens directly
+	// NOTE: These do NOT use TenantMiddleware because:
+	// 1. Users access these before login (no JWT, no tenant context)
+	// 2. The invitation token itself contains tenant association
+	// 3. GetInvitationByToken looks up globally by token, not filtered by tenant
+	invitationAuth := router.Group("/api/v1/auth")
+	invitationAuth.Use(sharedMiddleware.AuthRateLimit()) // Rate limit to prevent token brute-force
 	{
-		publicAuth.GET("/invitation/verify", authHandler.VerifyInvitation)
-		publicAuth.POST("/activate", authHandler.ActivateAccount)
+		invitationAuth.GET("/invitation/verify", authHandler.VerifyInvitation)
+		invitationAuth.POST("/activate", authHandler.ActivateAccount)
 	}
 
 	// Cross-tenant public routes (no tenant middleware - these lookup across all tenants)
