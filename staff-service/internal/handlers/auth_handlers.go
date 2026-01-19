@@ -994,6 +994,9 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 	// Get SSO config
 	ssoConfig, _ := h.authRepo.GetSSOConfig(tenantID)
 
+	// Track keycloak user ID for activation - will be set based on auth method
+	var keycloakUserID string
+
 	// FIX-HIGH-005: Validate auth method against tenant SSO policy
 	// Previously, activation didn't check if the auth method was allowed
 	switch req.AuthMethod {
@@ -1079,7 +1082,6 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		}
 
 		// Get or create Keycloak user
-		keycloakUserID := ""
 		if staff.KeycloakUserID != nil && *staff.KeycloakUserID != "" {
 			keycloakUserID = *staff.KeycloakUserID
 		} else {
@@ -1118,11 +1120,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 				keycloakUserID = newUserID
 				log.Printf("[ActivateAccount] Created Keycloak user for %s: %s", staff.Email, keycloakUserID)
 			}
-
-			// Store Keycloak user ID
-			if err := h.staffRepo.UpdateKeycloakUserID(tenantID, staff.ID, keycloakUserID); err != nil {
-				log.Printf("[ActivateAccount] Failed to store Keycloak user ID: %v", err)
-			}
+			// keycloak_user_id will be stored atomically in ActivateAccount below
 		}
 
 		// Set user attributes in Keycloak for JWT claims (staff_id, tenant_id, vendor_id)
@@ -1193,8 +1191,11 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 
 		// Create/update Keycloak user for SSO users to enable JWT claims extraction by Istio
 		if h.keycloakClient != nil {
-			if err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff); err != nil {
+			kcUserID, err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff)
+			if err != nil {
 				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Google SSO %s: %v", staff.Email, err)
+			} else if kcUserID != "" {
+				keycloakUserID = kcUserID
 			}
 		}
 
@@ -1236,8 +1237,11 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 
 		// Create/update Keycloak user for SSO users to enable JWT claims extraction by Istio
 		if h.keycloakClient != nil {
-			if err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff); err != nil {
+			kcUserID, err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff)
+			if err != nil {
 				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Microsoft SSO %s: %v", staff.Email, err)
+			} else if kcUserID != "" {
+				keycloakUserID = kcUserID
 			}
 		}
 
@@ -1252,8 +1256,12 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		return
 	}
 
-	// Activate account
-	if err := h.authRepo.ActivateAccount(tenantID, staff.ID, req.AuthMethod); err != nil {
+	// Activate account (includes storing keycloak_user_id atomically)
+	var keycloakUserIDPtr *string
+	if keycloakUserID != "" {
+		keycloakUserIDPtr = &keycloakUserID
+	}
+	if err := h.authRepo.ActivateAccount(tenantID, staff.ID, req.AuthMethod, keycloakUserIDPtr); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
 			Error: models.Error{
@@ -2156,9 +2164,10 @@ func parseInt(s string) (int, error) {
 // This is necessary for Istio JWT claim extraction to work properly - Istio extracts claims
 // from the JWT and forwards them as headers (x-jwt-claim-staff-id, x-jwt-claim-vendor-id, etc.)
 // to backend services for RBAC authorization.
-func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tenantID string, staff *models.Staff) error {
+// Returns the keycloak user ID so it can be stored atomically during activation.
+func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tenantID string, staff *models.Staff) (string, error) {
 	if h.keycloakClient == nil {
-		return fmt.Errorf("keycloak client not configured")
+		return "", fmt.Errorf("keycloak client not configured")
 	}
 
 	var keycloakUserID string
@@ -2184,16 +2193,12 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 			}
 			newUserID, err := h.keycloakClient.CreateUser(ctx, userRep)
 			if err != nil {
-				return fmt.Errorf("failed to create Keycloak user: %w", err)
+				return "", fmt.Errorf("failed to create Keycloak user: %w", err)
 			}
 			keycloakUserID = newUserID
 			log.Printf("[ensureKeycloakUserWithAttributes] Created Keycloak user for %s: %s", staff.Email, keycloakUserID)
 		}
-
-		// Store Keycloak user ID on staff record
-		if err := h.staffRepo.UpdateKeycloakUserID(tenantID, staff.ID, keycloakUserID); err != nil {
-			log.Printf("[ensureKeycloakUserWithAttributes] Warning: Failed to store Keycloak user ID: %v", err)
-		}
+		// Note: keycloak_user_id will be stored atomically in ActivateAccount
 	}
 
 	// Set user attributes in Keycloak for JWT claims
@@ -2207,9 +2212,9 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 	}
 
 	if err := h.keycloakClient.UpdateUserAttributes(ctx, keycloakUserID, keycloakAttrs); err != nil {
-		return fmt.Errorf("failed to update Keycloak user attributes: %w", err)
+		return "", fmt.Errorf("failed to update Keycloak user attributes: %w", err)
 	}
 
 	log.Printf("[ensureKeycloakUserWithAttributes] Keycloak attributes set for %s (staff_id=%s, tenant_id=%s)", staff.Email, staff.ID, tenantID)
-	return nil
+	return keycloakUserID, nil
 }

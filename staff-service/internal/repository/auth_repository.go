@@ -85,7 +85,7 @@ type AuthRepository interface {
 	// Activation management
 	GenerateActivationToken(tenantID string, staffID uuid.UUID) (string, error)
 	VerifyActivationToken(token string) (*models.Staff, error)
-	ActivateAccount(tenantID string, staffID uuid.UUID, authMethod models.StaffAuthMethod) error
+	ActivateAccount(tenantID string, staffID uuid.UUID, authMethod models.StaffAuthMethod, keycloakUserID *string) error
 	UpdateAccountStatus(tenantID string, staffID uuid.UUID, status models.StaffAccountStatus) error
 
 	// Login audit
@@ -762,20 +762,25 @@ func (r *authRepository) VerifyActivationToken(token string) (*models.Staff, err
 	return &staff, nil
 }
 
-func (r *authRepository) ActivateAccount(tenantID string, staffID uuid.UUID, authMethod models.StaffAuthMethod) error {
+func (r *authRepository) ActivateAccount(tenantID string, staffID uuid.UUID, authMethod models.StaffAuthMethod, keycloakUserID *string) error {
 	now := time.Now()
+	updates := map[string]interface{}{
+		"account_status":              models.AccountStatusActive,
+		"auth_method":                 authMethod,
+		"activation_token":            nil,
+		"activation_token_expires_at": nil,
+		"is_email_verified":           true,
+		"is_active":                   true, // Set IsActive=true on activation
+		"invitation_accepted_at":      now,
+		"updated_at":                  now,
+	}
+	// Include keycloak_user_id in the same atomic update if provided
+	if keycloakUserID != nil && *keycloakUserID != "" {
+		updates["keycloak_user_id"] = *keycloakUserID
+	}
 	return r.db.Model(&models.Staff{}).
 		Where("tenant_id = ? AND id = ?", tenantID, staffID).
-		Updates(map[string]interface{}{
-			"account_status":              models.AccountStatusActive,
-			"auth_method":                 authMethod,
-			"activation_token":            nil,
-			"activation_token_expires_at": nil,
-			"is_email_verified":           true,
-			"is_active":                   true, // Set IsActive=true on activation
-			"invitation_accepted_at":      now,
-			"updated_at":                  now,
-		}).Error
+		Updates(updates).Error
 }
 
 func (r *authRepository) UpdateAccountStatus(tenantID string, staffID uuid.UUID, status models.StaffAccountStatus) error {
