@@ -3,11 +3,12 @@ module coupons-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260118074104-d2acff79239a
+	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260120131633-df542d485082
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
@@ -70,7 +71,6 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.54.0 // indirect
-	github.com/redis/go-redis/v9 v9.17.2 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/swaggo/swag v1.16.3 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

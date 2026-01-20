@@ -3,10 +3,11 @@ module inventory-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260118074104-d2acff79239a
+	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260120131633-df542d485082
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/xuri/excelize/v2 v2.10.0
 	gorm.io/driver/postgres v1.5.6
@@ -63,7 +64,6 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.54.0 // indirect
-	github.com/redis/go-redis/v9 v9.17.2 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/tiendc/go-deepcopy v1.7.1 // indirect

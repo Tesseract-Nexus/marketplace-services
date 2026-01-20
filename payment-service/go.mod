@@ -3,10 +3,11 @@ module payment-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260118074104-d2acff79239a
+	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260120131633-df542d485082
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/razorpay/razorpay-go v1.4.0
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stripe/stripe-go/v76 v76.25.0
 	gorm.io/driver/postgres v1.5.6
@@ -20,7 +21,9 @@ require (
 	cloud.google.com/go/secretmanager v1.11.4 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect

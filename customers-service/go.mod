@@ -4,13 +4,14 @@ go 1.25
 
 require (
 	cloud.google.com/go/secretmanager v1.11.4
-	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260118074104-d2acff79239a
+	github.com/Tesseract-Nexus/go-shared v0.0.2-0.20260120131633-df542d485082
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/nats-io/nats.go v1.31.0
+	github.com/redis/go-redis/v9 v9.17.2
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.12
 )
@@ -64,7 +65,6 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.54.0 // indirect
-	github.com/redis/go-redis/v9 v9.17.2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
