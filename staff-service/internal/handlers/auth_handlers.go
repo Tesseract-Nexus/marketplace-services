@@ -1893,6 +1893,14 @@ func (h *AuthHandler) verifyGoogleToken(c *gin.Context, tenantID string, idToken
 		}
 	}
 
+	// SECURITY: Validate staff member is authorized for admin portal access
+	// Staff must be either:
+	// 1. A store owner (created via tenant onboarding)
+	// 2. Explicitly invited by an owner/admin (InvitedBy is set)
+	if err := validateStaffAdminAccess(staff); err != nil {
+		return nil, "", "", "", "", err
+	}
+
 	return staff, tokenInfo.Sub, tokenInfo.Email, tokenInfo.Name, tokenInfo.Picture, nil
 }
 
@@ -1946,6 +1954,11 @@ func (h *AuthHandler) verifyMicrosoftToken(c *gin.Context, tenantID string, idTo
 		} else {
 			return nil, "", "", "", "", fmt.Errorf("no account found for this email")
 		}
+	}
+
+	// SECURITY: Validate staff member is authorized for admin portal access
+	if err := validateStaffAdminAccess(staff); err != nil {
+		return nil, "", "", "", "", err
 	}
 
 	return staff, oid, email, name, "", nil
@@ -2031,8 +2044,16 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 	}
 
 	// Build tenant list with enriched tenant info from tenant-service
+	// Only include staff who are authorized for admin portal access
 	tenants := make([]gin.H, 0, len(staffList))
 	for _, staff := range staffList {
+		// SECURITY: Filter out staff who are not authorized for admin portal access
+		// This prevents customers from seeing tenants in the admin portal tenant switcher
+		if err := validateStaffAdminAccess(&staff); err != nil {
+			log.Printf("[AUTH] Filtering out staff %s from tenant list: %v", staff.Email, err)
+			continue
+		}
+
 		// Fetch tenant info from tenant-service to get slug and validate tenant exists
 		tenantID, err := uuid.Parse(staff.TenantID)
 		if err != nil {
@@ -2168,6 +2189,71 @@ func (h *AuthHandler) ValidateStaffCredentials(c *gin.Context) {
 		"message": "Staff credentials are stored in Keycloak. Use the standard Keycloak authentication flow.",
 		"code":    "ENDPOINT_DEPRECATED",
 	})
+}
+
+// validateStaffAdminAccess validates that a staff member is authorized to access the admin portal.
+// Access is granted only if:
+// 1. Account status is active
+// 2. Staff is marked as active (isActive = true)
+// 3. Staff is either:
+//   - A store owner (created via tenant onboarding)
+//   - Explicitly invited by an owner/admin (InvitedBy is set and invitation was accepted)
+//
+// This prevents customers who registered on the storefront from accessing the admin portal
+// even if they happen to have a staff record with matching email.
+func validateStaffAdminAccess(staff *models.Staff) error {
+	if staff == nil {
+		return fmt.Errorf("no staff account found")
+	}
+
+	// Check account status is active
+	if staff.AccountStatus != nil && *staff.AccountStatus != models.AccountStatusActive {
+		return fmt.Errorf("account is not active (status: %s)", *staff.AccountStatus)
+	}
+
+	// Check staff is active
+	if !staff.IsActive {
+		return fmt.Errorf("staff account is deactivated")
+	}
+
+	// Valid admin portal roles (excludes customer-like roles)
+	validAdminRoles := map[models.StaffRole]bool{
+		models.RoleStoreOwner:       true,
+		models.RoleStoreAdmin:       true,
+		models.RoleStoreManager:     true,
+		models.RoleInventoryManager: true,
+		models.RoleMarketingManager: true,
+		models.RoleOrderManager:     true,
+		models.RoleCustomerSupport:  true,
+		models.RoleSuperAdmin:       true,
+		models.RoleAdmin:            true,
+		models.RoleManager:          true,
+		models.RoleSeniorEmployee:   true,
+		models.RoleEmployee:         true,
+		models.RoleViewer:           true,
+	}
+
+	// Verify staff has a valid admin role
+	if !validAdminRoles[staff.Role] {
+		return fmt.Errorf("insufficient permissions: role '%s' is not authorized for admin portal access", staff.Role)
+	}
+
+	// For store owners, they are created during tenant onboarding - always allowed
+	if staff.Role == models.RoleStoreOwner || staff.Role == models.RoleSuperAdmin {
+		return nil
+	}
+
+	// For other staff, they must have been explicitly invited by an owner/admin
+	// This ensures customers can't access admin just because their email matches
+	if staff.InvitedBy == nil {
+		return fmt.Errorf("staff member was not properly invited - admin portal access denied")
+	}
+
+	// Optionally check invitation was accepted (for extra security)
+	// If InvitationAcceptedAt is nil but InvitedBy is set, the staff was invited but hasn't completed onboarding
+	// We allow this for SSO as the SSO login itself can serve as acceptance
+
+	return nil
 }
 
 func getIntParam(c *gin.Context, key string, defaultVal int) int {
