@@ -2043,8 +2043,10 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 		return
 	}
 
-	// Build tenant list with enriched tenant info from tenant-service
-	// Only include staff who are authorized for admin portal access
+	// Build tenant list - only include staff who are authorized for admin portal access
+	// NOTE: Do NOT call tenant-service here as this endpoint is called BY tenant-service,
+	// which would create a circular dependency and cause timeouts.
+	// Tenant enrichment (slug, name) is done by tenant-service after receiving this response.
 	tenants := make([]gin.H, 0, len(staffList))
 	for _, staff := range staffList {
 		// SECURITY: Filter out staff who are not authorized for admin portal access
@@ -2054,34 +2056,12 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 			continue
 		}
 
-		// Fetch tenant info from tenant-service to get slug and validate tenant exists
-		tenantID, err := uuid.Parse(staff.TenantID)
-		if err != nil {
-			log.Printf("[AUTH] Invalid tenant ID format for staff %s: %v", staff.ID, err)
-			continue
-		}
-
-		tenantInfo, err := h.tenantClient.GetTenantByID(c.Request.Context(), tenantID)
-		if err != nil {
-			log.Printf("[AUTH] Error fetching tenant info for %s: %v", staff.TenantID, err)
-			continue
-		}
-
-		// Skip orphaned staff records where tenant was deleted
-		if tenantInfo == nil {
-			log.Printf("[AUTH] Skipping orphaned staff record %s (tenant %s no longer exists)", staff.ID, staff.TenantID)
-			continue
-		}
-
 		tenants = append(tenants, gin.H{
 			"id":           staff.TenantID,
-			"slug":         tenantInfo.Slug,
-			"name":         tenantInfo.Name,
-			"display_name": tenantInfo.DisplayName,
-			"logo_url":     tenantInfo.LogoURL,
 			"staff_id":     staff.ID,
 			"role":         staff.Role,
 			"vendor_id":    staff.VendorID,
+			"display_name": fmt.Sprintf("%s %s", staff.FirstName, staff.LastName),
 		})
 	}
 
