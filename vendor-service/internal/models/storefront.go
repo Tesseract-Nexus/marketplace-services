@@ -15,7 +15,7 @@ type Storefront struct {
 	Slug         string          `json:"slug" gorm:"uniqueIndex;not null;size:100"`
 	Name         string          `json:"name" gorm:"not null;size:255"`
 	CustomDomain *string         `json:"customDomain,omitempty" gorm:"uniqueIndex;size:255"`
-	IsActive     bool            `json:"isActive" gorm:"default:true"`
+	IsActive     bool            `json:"isActive" gorm:"default:false"`
 	IsDefault    bool            `json:"isDefault" gorm:"default:false"`
 	ThemeConfig  *JSON           `json:"themeConfig,omitempty" gorm:"type:jsonb;default:'{}'"`
 	Settings     *JSON           `json:"settings,omitempty" gorm:"type:jsonb;default:'{}'"`
@@ -104,6 +104,8 @@ type StorefrontResolutionData struct {
 	FaviconURL     *string   `json:"faviconUrl,omitempty"`
 	VendorName     string    `json:"vendorName"`
 	VendorIsActive bool      `json:"vendorIsActive"`
+	// IsActive indicates whether the storefront is published (visible to customers)
+	IsActive bool `json:"isActive"`
 	// Computed field - the public URL for this storefront
 	StorefrontURL string `json:"storefrontUrl"`
 }

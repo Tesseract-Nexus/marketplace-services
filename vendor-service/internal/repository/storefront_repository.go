@@ -24,6 +24,11 @@ type StorefrontRepository interface {
 	ResolveBySlug(slug string) (*models.StorefrontResolutionData, error)
 	ResolveByCustomDomain(domain string) (*models.StorefrontResolutionData, error)
 
+	// Public resolution methods - returns storefront data including isActive status
+	// These don't filter by is_active, allowing "Coming Soon" pages for unpublished stores
+	ResolveBySlugForPublic(slug string) (*models.StorefrontResolutionData, error)
+	ResolveByCustomDomainForPublic(domain string) (*models.StorefrontResolutionData, error)
+
 	// Vendor-specific operations
 	GetByVendorID(vendorID uuid.UUID) ([]models.Storefront, error)
 	CountByVendorID(vendorID uuid.UUID) (int64, error)
@@ -210,6 +215,7 @@ func (r *storefrontRepository) ResolveBySlug(slug string) (*models.StorefrontRes
 		FaviconURL:     storefront.FaviconURL,
 		VendorName:     storefront.Vendor.Name,
 		VendorIsActive: storefront.Vendor.IsActive,
+		IsActive:       storefront.IsActive,
 	}, nil
 }
 
@@ -241,6 +247,75 @@ func (r *storefrontRepository) ResolveByCustomDomain(domain string) (*models.Sto
 		FaviconURL:     storefront.FaviconURL,
 		VendorName:     storefront.Vendor.Name,
 		VendorIsActive: storefront.Vendor.IsActive,
+		IsActive:       storefront.IsActive,
+	}, nil
+}
+
+// ResolveBySlugForPublic returns tenant resolution data including isActive status
+// This method does NOT filter by is_active, allowing storefronts to show "Coming Soon" pages
+// for unpublished stores. It still verifies the vendor is active.
+func (r *storefrontRepository) ResolveBySlugForPublic(slug string) (*models.StorefrontResolutionData, error) {
+	var storefront models.Storefront
+	err := r.db.Where("slug = ?", strings.ToLower(slug)).
+		Preload("Vendor").
+		First(&storefront).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify vendor is active - we don't want to expose storefronts for deactivated vendors
+	if !storefront.Vendor.IsActive {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	return &models.StorefrontResolutionData{
+		StorefrontID:   storefront.ID,
+		VendorID:       storefront.VendorID,
+		Slug:           storefront.Slug,
+		Name:           storefront.Name,
+		CustomDomain:   storefront.CustomDomain,
+		ThemeConfig:    storefront.ThemeConfig,
+		Settings:       storefront.Settings,
+		LogoURL:        storefront.LogoURL,
+		FaviconURL:     storefront.FaviconURL,
+		VendorName:     storefront.Vendor.Name,
+		VendorIsActive: storefront.Vendor.IsActive,
+		IsActive:       storefront.IsActive,
+	}, nil
+}
+
+// ResolveByCustomDomainForPublic returns tenant resolution data including isActive status
+// This method does NOT filter by is_active, allowing storefronts to show "Coming Soon" pages
+// for unpublished stores. It still verifies the vendor is active.
+func (r *storefrontRepository) ResolveByCustomDomainForPublic(domain string) (*models.StorefrontResolutionData, error) {
+	var storefront models.Storefront
+	err := r.db.Where("custom_domain = ?", strings.ToLower(domain)).
+		Preload("Vendor").
+		First(&storefront).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify vendor is active - we don't want to expose storefronts for deactivated vendors
+	if !storefront.Vendor.IsActive {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	return &models.StorefrontResolutionData{
+		StorefrontID:   storefront.ID,
+		VendorID:       storefront.VendorID,
+		Slug:           storefront.Slug,
+		Name:           storefront.Name,
+		CustomDomain:   storefront.CustomDomain,
+		ThemeConfig:    storefront.ThemeConfig,
+		Settings:       storefront.Settings,
+		LogoURL:        storefront.LogoURL,
+		FaviconURL:     storefront.FaviconURL,
+		VendorName:     storefront.Vendor.Name,
+		VendorIsActive: storefront.Vendor.IsActive,
+		IsActive:       storefront.IsActive,
 	}, nil
 }
 

@@ -202,8 +202,9 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 	{
 		// Public storefront resolution - allows storefronts to identify themselves
 		// This is needed for SSR where the storefront doesn't have user credentials
-		publicV1.GET("/storefronts/resolve/by-slug/:slug", storefrontHandler.ResolveBySlug)
-		publicV1.GET("/storefronts/resolve/by-domain/:domain", storefrontHandler.ResolveByDomain)
+		// Uses ForPublic methods that return isActive status (for "Coming Soon" pages)
+		publicV1.GET("/storefronts/resolve/by-slug/:slug", storefrontHandler.ResolveBySlugForPublic)
+		publicV1.GET("/storefronts/resolve/by-domain/:domain", storefrontHandler.ResolveByDomainForPublic)
 	}
 
 	// Internal API routes - for service-to-service communication (no RBAC)

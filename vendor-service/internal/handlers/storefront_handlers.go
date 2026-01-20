@@ -177,7 +177,7 @@ func (h *StorefrontHandler) CreateStorefront(c *gin.Context) {
 		Description:  req.Description,
 		MetaTitle:    req.MetaTitle,
 		MetaDesc:     req.MetaDesc,
-		IsActive:     true,
+		IsActive:     false, // New storefronts start unpublished
 		CreatedBy:    &createdByStr,
 	}
 
@@ -581,6 +581,96 @@ func (h *StorefrontHandler) ResolveByDomain(c *gin.Context) {
 			Error: models.Error{
 				Code:    "NOT_FOUND",
 				Message: "Storefront not found or inactive",
+			},
+		})
+		return
+	}
+
+	// Compute the storefront URL for the resolution data
+	data.StorefrontURL = models.ComputeStorefrontURLForSlug(data.Slug, data.CustomDomain, h.storefrontDomain)
+
+	c.JSON(http.StatusOK, models.StorefrontResolutionResponse{
+		Success: true,
+		Data:    data,
+	})
+}
+
+// ResolveBySlugForPublic resolves a storefront by its slug for public/anonymous access
+// Returns storefront data including isActive status (doesn't filter by isActive)
+// Used by storefronts to show "Coming Soon" page for unpublished stores
+// @Summary Resolve storefront by slug (public)
+// @Description Get tenant information by storefront slug including publish status (used by storefront middleware)
+// @Tags Public
+// @Produce json
+// @Param slug path string true "Storefront slug"
+// @Success 200 {object} models.StorefrontResolutionResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Router /public/storefronts/resolve/by-slug/{slug} [get]
+func (h *StorefrontHandler) ResolveBySlugForPublic(c *gin.Context) {
+	slug := c.Param("slug")
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "MISSING_SLUG",
+				Message: "Slug is required",
+			},
+		})
+		return
+	}
+
+	data, err := h.repo.ResolveBySlugForPublic(slug)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "NOT_FOUND",
+				Message: "Storefront not found",
+			},
+		})
+		return
+	}
+
+	// Compute the storefront URL for the resolution data
+	data.StorefrontURL = models.ComputeStorefrontURLForSlug(data.Slug, data.CustomDomain, h.storefrontDomain)
+
+	c.JSON(http.StatusOK, models.StorefrontResolutionResponse{
+		Success: true,
+		Data:    data,
+	})
+}
+
+// ResolveByDomainForPublic resolves a storefront by its custom domain for public/anonymous access
+// Returns storefront data including isActive status (doesn't filter by isActive)
+// Used by storefronts to show "Coming Soon" page for unpublished stores
+// @Summary Resolve storefront by custom domain (public)
+// @Description Get tenant information by custom domain including publish status (used by storefront middleware)
+// @Tags Public
+// @Produce json
+// @Param domain path string true "Custom domain"
+// @Success 200 {object} models.StorefrontResolutionResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Router /public/storefronts/resolve/by-domain/{domain} [get]
+func (h *StorefrontHandler) ResolveByDomainForPublic(c *gin.Context) {
+	domain := c.Param("domain")
+	if domain == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "MISSING_DOMAIN",
+				Message: "Domain is required",
+			},
+		})
+		return
+	}
+
+	data, err := h.repo.ResolveByCustomDomainForPublic(domain)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "NOT_FOUND",
+				Message: "Storefront not found",
 			},
 		})
 		return
