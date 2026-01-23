@@ -1,19 +1,101 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"coupons-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for coupons
+const (
+	CouponCacheTTL     = 10 * time.Minute // Individual coupon - frequently accessed
+	CouponCodeCacheTTL = 10 * time.Minute // Coupon by code - used during validation
+	CouponListCacheTTL = 2 * time.Minute  // Coupon lists - may change frequently
+)
+
 type CouponRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-func NewCouponRepository(db *gorm.DB) *CouponRepository {
-	return &CouponRepository{db: db}
+func NewCouponRepository(db *gorm.DB, redisClient *redis.Client) *CouponRepository {
+	repo := &CouponRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 5000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: CouponCacheTTL,
+			KeyPrefix:  "tesseract:coupons:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateCouponCacheKey creates a cache key for coupon lookups by ID
+func generateCouponCacheKey(tenantID string, couponID uuid.UUID) string {
+	return fmt.Sprintf("coupon:%s:%s", tenantID, couponID.String())
+}
+
+// generateCouponCodeCacheKey creates a cache key for coupon lookups by code
+func generateCouponCodeCacheKey(tenantID string, code string) string {
+	return fmt.Sprintf("coupon:code:%s:%s", tenantID, code)
+}
+
+// invalidateCouponCaches invalidates all caches related to a coupon
+func (r *CouponRepository) invalidateCouponCaches(ctx context.Context, tenantID string, couponID uuid.UUID, code string) {
+	if r.cache == nil {
+		return
+	}
+
+	// Invalidate specific coupon cache
+	couponKey := generateCouponCacheKey(tenantID, couponID)
+	_ = r.cache.Delete(ctx, couponKey)
+
+	// Invalidate coupon code cache if provided
+	if code != "" {
+		codeKey := generateCouponCodeCacheKey(tenantID, code)
+		_ = r.cache.Delete(ctx, codeKey)
+	}
+
+	// Invalidate list caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("coupon:list:%s:*", tenantID))
+
+	// Invalidate analytics cache
+	_ = r.cache.Delete(ctx, fmt.Sprintf("coupon:analytics:%s", tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *CouponRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *CouponRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // CreateCoupon creates a new coupon
@@ -21,8 +103,23 @@ func (r *CouponRepository) CreateCoupon(coupon *models.Coupon) error {
 	return r.db.Create(coupon).Error
 }
 
-// GetCouponByID retrieves a coupon by ID
+// GetCouponByID retrieves a coupon by ID (with caching)
 func (r *CouponRepository) GetCouponByID(tenantID string, id uuid.UUID) (*models.Coupon, error) {
+	ctx := context.Background()
+	cacheKey := generateCouponCacheKey(tenantID, id)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:coupons:"+cacheKey).Result()
+		if err == nil {
+			var coupon models.Coupon
+			if err := json.Unmarshal([]byte(val), &coupon); err == nil {
+				return &coupon, nil
+			}
+		}
+	}
+
+	// Query from database
 	var coupon models.Coupon
 	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, id).First(&coupon).Error
 	if err != nil {
@@ -31,11 +128,35 @@ func (r *CouponRepository) GetCouponByID(tenantID string, id uuid.UUID) (*models
 		}
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(coupon)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:coupons:"+cacheKey, data, CouponCacheTTL)
+		}
+	}
+
 	return &coupon, nil
 }
 
-// GetCouponByCode retrieves a coupon by code
+// GetCouponByCode retrieves a coupon by code (with caching - critical for validation)
 func (r *CouponRepository) GetCouponByCode(tenantID, code string) (*models.Coupon, error) {
+	ctx := context.Background()
+	cacheKey := generateCouponCodeCacheKey(tenantID, code)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:coupons:"+cacheKey).Result()
+		if err == nil {
+			var coupon models.Coupon
+			if err := json.Unmarshal([]byte(val), &coupon); err == nil {
+				return &coupon, nil
+			}
+		}
+	}
+
+	// Query from database
 	var coupon models.Coupon
 	err := r.db.Where("tenant_id = ? AND code = ?", tenantID, code).First(&coupon).Error
 	if err != nil {
@@ -44,17 +165,43 @@ func (r *CouponRepository) GetCouponByCode(tenantID, code string) (*models.Coupo
 		}
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(coupon)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:coupons:"+cacheKey, data, CouponCodeCacheTTL)
+		}
+	}
+
 	return &coupon, nil
 }
 
 // UpdateCoupon updates an existing coupon
 func (r *CouponRepository) UpdateCoupon(coupon *models.Coupon) error {
-	return r.db.Save(coupon).Error
+	err := r.db.Save(coupon).Error
+	if err == nil {
+		// Invalidate cache if update was successful
+		r.invalidateCouponCaches(context.Background(), coupon.TenantID, coupon.ID, coupon.Code)
+	}
+	return err
 }
 
 // DeleteCoupon soft deletes a coupon
 func (r *CouponRepository) DeleteCoupon(tenantID string, id uuid.UUID) error {
-	return r.db.Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&models.Coupon{}).Error
+	// Get the coupon first to get the code for cache invalidation
+	coupon, _ := r.GetCouponByID(tenantID, id)
+	code := ""
+	if coupon != nil {
+		code = coupon.Code
+	}
+
+	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&models.Coupon{}).Error
+	if err == nil {
+		// Invalidate cache if delete was successful
+		r.invalidateCouponCaches(context.Background(), tenantID, id, code)
+	}
+	return err
 }
 
 // GetCouponList retrieves a paginated list of coupons with filters

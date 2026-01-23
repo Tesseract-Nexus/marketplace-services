@@ -1,21 +1,84 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"reviews-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for reviews
+const (
+	ReviewCacheTTL       = 15 * time.Minute // Individual review
+	ReviewListCacheTTL   = 5 * time.Minute  // Review lists may change frequently
+	ReviewStatsCacheTTL  = 10 * time.Minute // Analytics and stats
+)
+
 type ReviewsRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-func NewReviewsRepository(db *gorm.DB) *ReviewsRepository {
-	return &ReviewsRepository{db: db}
+func NewReviewsRepository(db *gorm.DB, redisClient *redis.Client) *ReviewsRepository {
+	repo := &ReviewsRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 2000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: ReviewCacheTTL,
+			KeyPrefix:  "tesseract:reviews:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateReviewCacheKey creates a cache key for review lookups
+func generateReviewCacheKey(tenantID string, reviewID uuid.UUID) string {
+	return fmt.Sprintf("review:%s:%s", tenantID, reviewID.String())
+}
+
+// invalidateReviewCaches invalidates all caches related to a review
+func (r *ReviewsRepository) invalidateReviewCaches(ctx context.Context, tenantID string, reviewID uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateReviewCacheKey(tenantID, reviewID))
+	// Invalidate list and stats caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("review:list:%s:*", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("review:stats:%s:*", tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *ReviewsRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *ReviewsRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // CreateReview creates a new review
@@ -24,25 +87,57 @@ func (r *ReviewsRepository) CreateReview(tenantID string, review *models.Review)
 	review.CreatedAt = time.Now()
 	review.UpdatedAt = time.Now()
 
-	return r.db.Create(review).Error
+	err := r.db.Create(review).Error
+	if err == nil {
+		r.invalidateReviewCaches(context.Background(), tenantID, review.ID)
+	}
+	return err
 }
 
-// GetReviewByID retrieves a review by ID
+// GetReviewByID retrieves a review by ID (with caching)
 func (r *ReviewsRepository) GetReviewByID(tenantID string, reviewID uuid.UUID) (*models.Review, error) {
+	ctx := context.Background()
+	cacheKey := generateReviewCacheKey(tenantID, reviewID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:reviews:"+cacheKey).Result()
+		if err == nil {
+			var review models.Review
+			if err := json.Unmarshal([]byte(val), &review); err == nil {
+				return &review, nil
+			}
+		}
+	}
+
+	// Query from database
 	var review models.Review
 	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, reviewID).First(&review).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(review)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:reviews:"+cacheKey, data, ReviewCacheTTL)
+		}
+	}
+
 	return &review, nil
 }
 
 // UpdateReview updates a review
 func (r *ReviewsRepository) UpdateReview(tenantID string, reviewID uuid.UUID, updates *models.Review) error {
 	updates.UpdatedAt = time.Now()
-	return r.db.Model(&models.Review{}).
+	err := r.db.Model(&models.Review{}).
 		Where("tenant_id = ? AND id = ?", tenantID, reviewID).
 		Updates(updates).Error
+	if err == nil {
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+	}
+	return err
 }
 
 // UpdateReviewStatus updates review status
@@ -57,15 +152,23 @@ func (r *ReviewsRepository) UpdateReviewStatus(tenantID string, reviewID uuid.UU
 		updates["published_at"] = time.Now()
 	}
 
-	return r.db.Model(&models.Review{}).
+	err := r.db.Model(&models.Review{}).
 		Where("tenant_id = ? AND id = ?", tenantID, reviewID).
 		Updates(updates).Error
+	if err == nil {
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+	}
+	return err
 }
 
 // DeleteReview soft deletes a review
 func (r *ReviewsRepository) DeleteReview(tenantID string, reviewID uuid.UUID) error {
-	return r.db.Where("tenant_id = ? AND id = ?", tenantID, reviewID).
+	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, reviewID).
 		Delete(&models.Review{}).Error
+	if err == nil {
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+	}
+	return err
 }
 
 // GetReviews retrieves reviews with filters and pagination
@@ -178,9 +281,17 @@ func (r *ReviewsRepository) BulkUpdateStatus(tenantID string, reviewIDs []string
 		}
 	}
 
-	return r.db.Model(&models.Review{}).
+	err := r.db.Model(&models.Review{}).
 		Where("tenant_id = ? AND id IN ?", tenantID, uuidIDs).
 		Updates(updates).Error
+	if err == nil {
+		// Invalidate caches for all updated reviews
+		ctx := context.Background()
+		for _, id := range uuidIDs {
+			r.invalidateReviewCaches(ctx, tenantID, id)
+		}
+	}
+	return err
 }
 
 // GetReviewsByTargetID gets reviews for a specific target

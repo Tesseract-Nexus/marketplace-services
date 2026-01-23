@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -68,6 +71,32 @@ func main() {
 	}
 	logger.Info("✓ Database migrations completed")
 
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			logger.Warnf("Failed to parse Redis URL: %v", err)
+			logger.Info("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				logger.Warnf("Failed to connect to Redis: %v", err)
+				logger.Info("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				logger.Info("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		logger.Info("REDIS_URL not configured, caching disabled")
+	}
+
 	// Initialize NATS events publisher
 	eventsPublisher, err := events.NewPublisher(logger)
 	if err != nil {
@@ -83,7 +112,7 @@ func main() {
 	logger.Info("✓ Notification client initialized")
 
 	// Initialize repository
-	couponRepo := repository.NewCouponRepository(db)
+	couponRepo := repository.NewCouponRepository(db, redisClient)
 
 	// Initialize handlers
 	couponHandler := handlers.NewCouponHandler(couponRepo, notificationClient, tenantClient)
@@ -96,6 +125,18 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		logger.Info("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		logger.Info("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// Add CORS middleware
 	router.Use(middleware.CORS())

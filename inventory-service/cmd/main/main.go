@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"inventory-service/internal/config"
 	"inventory-service/internal/events"
@@ -78,8 +79,34 @@ func main() {
 		log.Println("NATS_URL not configured, event publishing disabled")
 	}
 
-	// Initialize repository
-	inventoryRepo := repository.NewInventoryRepository(db)
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to parse Redis URL: %v", err)
+			log.Println("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("Warning: Failed to connect to Redis: %v", err)
+				log.Println("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				log.Println("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not configured, caching disabled")
+	}
+
+	// Initialize repository with Redis client
+	inventoryRepo := repository.NewInventoryRepository(db, redisClient)
 
 	// Initialize handlers with event publisher
 	inventoryHandler := handlers.NewInventoryHandler(inventoryRepo, eventPublisher)
@@ -118,6 +145,18 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Println("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
+
 	// Add observability middleware (metrics + tracing)
 	router.Use(metrics.Middleware())
 	router.Use(tracing.GinMiddleware("inventory-service"))
@@ -127,6 +166,7 @@ func main() {
 
 	// Health check endpoints (no auth required)
 	router.GET("/health", handlers.HealthCheck)
+	router.GET("/health/detailed", inventoryHandler.ExtendedHealthCheck)
 	router.GET("/ready", handlers.HealthCheck)
 	router.GET("/metrics", gosharedmw.Handler())
 

@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	"github.com/sirupsen/logrus"
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
 	"shipping-service/internal/carriers"
 	"shipping-service/internal/events"
@@ -51,6 +54,32 @@ func main() {
 		log.Printf("Warning: Failed to seed carrier templates: %v", err)
 	}
 
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to parse Redis URL: %v", err)
+			log.Println("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("Warning: Failed to connect to Redis: %v", err)
+				log.Println("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				log.Println("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not configured, caching disabled")
+	}
+
 	// Initialize NATS events publisher
 	eventLogger := logrus.New()
 	eventLogger.SetFormatter(&logrus.JSONFormatter{})
@@ -80,8 +109,8 @@ func main() {
 	log.Println("Legacy carrier service initialized")
 
 	// Initialize repositories
-	shipmentRepo := repository.NewShipmentRepository(db)
-	carrierConfigRepo := repository.NewCarrierConfigRepository(db)
+	shipmentRepo := repository.NewShipmentRepository(db, redisClient)
+	carrierConfigRepo := repository.NewCarrierConfigRepository(db, redisClient)
 	log.Println("Repositories initialized")
 
 	// Initialize carrier factory and selector service
@@ -113,7 +142,7 @@ func main() {
 	log.Println("✓ RBAC middleware initialized")
 
 	// Setup router
-	router := setupRouter(shippingHandler, carrierConfigHandler, cfg, rbacMw)
+	router := setupRouter(shippingHandler, carrierConfigHandler, cfg, rbacMw, redisClient)
 	log.Printf("Router configured")
 
 	// Start server
@@ -195,7 +224,7 @@ func initializeCarrier(name string, config carriers.CarrierConfig) carriers.Carr
 }
 
 // setupRouter configures the Gin router with routes and middleware
-func setupRouter(shippingHandler *handlers.ShippingHandler, carrierConfigHandler *handlers.CarrierConfigHandler, cfg *config.Config, rbacMw *rbac.Middleware) *gin.Engine {
+func setupRouter(shippingHandler *handlers.ShippingHandler, carrierConfigHandler *handlers.CarrierConfigHandler, cfg *config.Config, rbacMw *rbac.Middleware, redisClient *redis.Client) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -207,6 +236,19 @@ func setupRouter(shippingHandler *handlers.ShippingHandler, carrierConfigHandler
 
 	// Global middleware
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Println("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
+
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(middleware.CORS())
 	router.Use(middleware.TenantMiddleware())

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -86,6 +89,25 @@ func main() {
 		log.WithError(err).Fatal("Failed to run migrations")
 	}
 
+	// Initialize Redis client (graceful degradation if unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Warnf("⚠ Failed to parse Redis URL: %v (caching disabled)", err)
+		} else {
+			redisClient = redis.NewClient(opt)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Warnf("⚠ Failed to connect to Redis: %v (caching disabled)", err)
+				redisClient = nil
+			} else {
+				log.Info("✓ Redis connection established")
+			}
+		}
+	}
+
 	// Initialize NATS events publisher
 	eventsPublisher, err := events.NewPublisher(log)
 	if err != nil {
@@ -100,15 +122,15 @@ func main() {
 	tenantClient := clients.NewTenantClient()
 	log.Info("✓ Notification client initialized")
 
-	// Initialize dependencies
-	vendorRepo := repository.NewVendorRepository(db)
+	// Initialize dependencies with Redis caching
+	vendorRepo := repository.NewVendorRepository(db, redisClient)
 	vendorService := services.NewVendorService(vendorRepo)
 	vendorHandler := handlers.NewVendorHandler(vendorService, notificationClient, tenantClient)
 	documentHandler := handlers.NewDocumentHandler(cfg.DocumentServiceURL, cfg.ProductID)
 	healthHandler := handlers.NewHealthHandler()
 
-	// Initialize storefront dependencies
-	storefrontRepo := repository.NewStorefrontRepository(db)
+	// Initialize storefront dependencies with Redis caching
+	storefrontRepo := repository.NewStorefrontRepository(db, redisClient)
 	storefrontHandler := handlers.NewStorefrontHandler(storefrontRepo, vendorRepo, cfg)
 
 	// Initialize RBAC middleware
@@ -120,7 +142,7 @@ func main() {
 	log.Info("✓ RBAC middleware initialized")
 
 	// Initialize Gin router
-	router := setupRouter(cfg, vendorHandler, documentHandler, healthHandler, storefrontHandler, rbacMiddleware)
+	router := setupRouter(cfg, vendorHandler, documentHandler, healthHandler, storefrontHandler, rbacMiddleware, redisClient)
 
 	// Start server
 	serverAddr := ":" + cfg.Port
@@ -180,12 +202,24 @@ func runMigrations(db *gorm.DB) error {
 }
 
 // setupRouter configures the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, documentHandler *handlers.DocumentHandler, healthHandler *handlers.HealthHandler, storefrontHandler *handlers.StorefrontHandler, rbacMiddleware *rbac.Middleware) *gin.Engine {
+func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, documentHandler *handlers.DocumentHandler, healthHandler *handlers.HealthHandler, storefrontHandler *handlers.StorefrontHandler, rbacMiddleware *rbac.Middleware, redisClient *redis.Client) *gin.Engine {
 	router := gin.New()
 
 	// Global middleware
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Info("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Info("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// CORS middleware
 	router.Use(localMiddleware.CORS())

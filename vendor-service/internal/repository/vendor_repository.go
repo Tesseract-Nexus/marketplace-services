@@ -1,14 +1,24 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"vendor-service/internal/models"
 	"gorm.io/gorm"
+)
+
+// Cache TTL constants for vendors
+const (
+	VendorCacheTTL     = 15 * time.Minute // Individual vendor
+	VendorListCacheTTL = 5 * time.Minute  // Vendor lists
 )
 
 type VendorRepository interface {
@@ -47,11 +57,45 @@ type VendorRepository interface {
 }
 
 type vendorRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-func NewVendorRepository(db *gorm.DB) VendorRepository {
-	return &vendorRepository{db: db}
+func NewVendorRepository(db *gorm.DB, redisClient *redis.Client) VendorRepository {
+	repo := &vendorRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 2000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: VendorCacheTTL,
+			KeyPrefix:  "tesseract:vendors:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateVendorCacheKey creates a cache key for vendor lookups
+func generateVendorCacheKey(tenantID string, vendorID uuid.UUID) string {
+	return fmt.Sprintf("vendor:%s:%s", tenantID, vendorID.String())
+}
+
+// invalidateVendorCaches invalidates all caches related to a vendor
+func (r *vendorRepository) invalidateVendorCaches(ctx context.Context, tenantID string, vendorID uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateVendorCacheKey(tenantID, vendorID))
+	// Invalidate list caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("vendor:list:%s:*", tenantID))
 }
 
 func (r *vendorRepository) Create(tenantID string, vendor *models.Vendor) error {
@@ -59,10 +103,29 @@ func (r *vendorRepository) Create(tenantID string, vendor *models.Vendor) error 
 	vendor.CreatedAt = time.Now()
 	vendor.UpdatedAt = time.Now()
 
-	return r.db.Create(vendor).Error
+	err := r.db.Create(vendor).Error
+	if err == nil {
+		r.invalidateVendorCaches(context.Background(), tenantID, vendor.ID)
+	}
+	return err
 }
 
 func (r *vendorRepository) GetByID(tenantID string, id uuid.UUID) (*models.Vendor, error) {
+	ctx := context.Background()
+	cacheKey := generateVendorCacheKey(tenantID, id)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:vendors:"+cacheKey).Result()
+		if err == nil {
+			var vendor models.Vendor
+			if err := json.Unmarshal([]byte(val), &vendor); err == nil {
+				return &vendor, nil
+			}
+		}
+	}
+
+	// Query from database
 	var vendor models.Vendor
 	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, id).
 		Preload("Addresses").
@@ -71,6 +134,14 @@ func (r *vendorRepository) GetByID(tenantID string, id uuid.UUID) (*models.Vendo
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(vendor)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:vendors:"+cacheKey, data, VendorCacheTTL)
+		}
 	}
 
 	return &vendor, nil
@@ -161,18 +232,26 @@ func (r *vendorRepository) Update(tenantID string, id uuid.UUID, updates *models
 
 	updateMap["updated_at"] = time.Now()
 
-	return r.db.Model(&models.Vendor{}).
+	err := r.db.Model(&models.Vendor{}).
 		Where("tenant_id = ? AND id = ?", tenantID, id).
 		Updates(updateMap).Error
+	if err == nil {
+		r.invalidateVendorCaches(context.Background(), tenantID, id)
+	}
+	return err
 }
 
 func (r *vendorRepository) Delete(tenantID string, id uuid.UUID, deletedBy string) error {
-	return r.db.Model(&models.Vendor{}).
+	err := r.db.Model(&models.Vendor{}).
 		Where("tenant_id = ? AND id = ?", tenantID, id).
 		Updates(map[string]interface{}{
 			"deleted_at": time.Now(),
 			"updated_by": deletedBy,
 		}).Error
+	if err == nil {
+		r.invalidateVendorCaches(context.Background(), tenantID, id)
+	}
+	return err
 }
 
 func (r *vendorRepository) List(tenantID string, filters *models.VendorFilters, page, limit int) ([]models.Vendor, *models.PaginationInfo, error) {

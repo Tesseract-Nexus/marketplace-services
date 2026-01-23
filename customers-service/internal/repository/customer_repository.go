@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -9,27 +10,115 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"customers-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for customers
+const (
+	CustomerCacheTTL      = 15 * time.Minute // Customer profile - frequently accessed
+	CustomerEmailCacheTTL = 15 * time.Minute // Lookup by email
+	CustomerListCacheTTL  = 2 * time.Minute  // Lists may change frequently
+)
+
 // CustomerRepository handles customer data operations
 type CustomerRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-// NewCustomerRepository creates a new customer repository
-func NewCustomerRepository(db *gorm.DB) *CustomerRepository {
-	return &CustomerRepository{db: db}
+// NewCustomerRepository creates a new customer repository with optional Redis caching
+func NewCustomerRepository(db *gorm.DB, redisClient *redis.Client) *CustomerRepository {
+	repo := &CustomerRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 5000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: CustomerCacheTTL,
+			KeyPrefix:  "tesseract:customers:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateCustomerCacheKey creates a cache key for customer lookups
+func generateCustomerCacheKey(tenantID string, customerID uuid.UUID) string {
+	return fmt.Sprintf("customer:%s:%s", tenantID, customerID.String())
+}
+
+// generateCustomerEmailCacheKey creates a cache key for email lookups
+func generateCustomerEmailCacheKey(tenantID string, email string) string {
+	return fmt.Sprintf("customer:email:%s:%s", tenantID, email)
+}
+
+// invalidateCustomerCaches invalidates all caches related to a customer
+func (r *CustomerRepository) invalidateCustomerCaches(ctx context.Context, tenantID string, customerID uuid.UUID, email string) {
+	if r.cache == nil {
+		return
+	}
+	// Invalidate specific customer cache
+	_ = r.cache.Delete(ctx, generateCustomerCacheKey(tenantID, customerID))
+	// Invalidate email cache if provided
+	if email != "" {
+		_ = r.cache.Delete(ctx, generateCustomerEmailCacheKey(tenantID, email))
+	}
+	// Invalidate list caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("customer:list:%s:*", tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *CustomerRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *CustomerRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // Create creates a new customer
 func (r *CustomerRepository) Create(ctx context.Context, customer *models.Customer) error {
-	return r.db.WithContext(ctx).Create(customer).Error
+	err := r.db.WithContext(ctx).Create(customer).Error
+	if err == nil {
+		r.invalidateCustomerCaches(ctx, customer.TenantID, customer.ID, customer.Email)
+	}
+	return err
 }
 
-// GetByID retrieves a customer by ID
+// GetByID retrieves a customer by ID (with caching)
 func (r *CustomerRepository) GetByID(ctx context.Context, tenantID string, customerID uuid.UUID) (*models.Customer, error) {
+	cacheKey := generateCustomerCacheKey(tenantID, customerID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:customers:"+cacheKey).Result()
+		if err == nil {
+			var customer models.Customer
+			if err := json.Unmarshal([]byte(val), &customer); err == nil {
+				return &customer, nil
+			}
+		}
+	}
+
+	// Query from database
 	var customer models.Customer
 	err := r.db.WithContext(ctx).
 		Preload("Addresses").
@@ -42,6 +131,14 @@ func (r *CustomerRepository) GetByID(ctx context.Context, tenantID string, custo
 			return nil, fmt.Errorf("customer not found")
 		}
 		return nil, err
+	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(customer)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:customers:"+cacheKey, data, CustomerCacheTTL)
+		}
 	}
 
 	return &customer, nil
@@ -174,14 +271,29 @@ func (r *CustomerRepository) List(ctx context.Context, filter ListFilter) ([]mod
 
 // Update updates a customer
 func (r *CustomerRepository) Update(ctx context.Context, customer *models.Customer) error {
-	return r.db.WithContext(ctx).Save(customer).Error
+	err := r.db.WithContext(ctx).Save(customer).Error
+	if err == nil {
+		r.invalidateCustomerCaches(ctx, customer.TenantID, customer.ID, customer.Email)
+	}
+	return err
 }
 
 // Delete soft deletes a customer
 func (r *CustomerRepository) Delete(ctx context.Context, tenantID string, customerID uuid.UUID) error {
-	return r.db.WithContext(ctx).
+	// Get customer email for cache invalidation
+	customer, _ := r.GetByID(ctx, tenantID, customerID)
+	email := ""
+	if customer != nil {
+		email = customer.Email
+	}
+
+	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND id = ?", tenantID, customerID).
 		Delete(&models.Customer{}).Error
+	if err == nil {
+		r.invalidateCustomerCaches(ctx, tenantID, customerID, email)
+	}
+	return err
 }
 
 // UpdateStats updates customer statistics (total_orders, total_spent, etc.)

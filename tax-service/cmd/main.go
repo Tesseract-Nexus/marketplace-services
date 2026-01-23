@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"tax-service/internal/config"
 	"tax-service/internal/database"
@@ -16,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Tesseract-Nexus/go-shared/rbac"
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 )
 
 func main() {
@@ -34,6 +37,25 @@ func main() {
 		log.Fatalf("Failed to run database migrations: %v", err)
 	}
 
+	// Initialize Redis client (graceful degradation if unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("WARNING: Failed to parse Redis URL: %v (caching disabled)", err)
+		} else {
+			redisClient = redis.NewClient(opt)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("WARNING: Failed to connect to Redis: %v (caching disabled)", err)
+				redisClient = nil
+			} else {
+				log.Println("✓ Redis connection established")
+			}
+		}
+	}
+
 	// Initialize NATS events publisher (non-blocking)
 	eventLogger := logrus.New()
 	eventLogger.SetFormatter(&logrus.JSONFormatter{})
@@ -46,8 +68,8 @@ func main() {
 		}
 	}()
 
-	// Initialize repository
-	taxRepo := repository.NewTaxRepository(db)
+	// Initialize repository with Redis caching
+	taxRepo := repository.NewTaxRepository(db, redisClient)
 
 	// Initialize services
 	cacheTTL := time.Duration(cfg.CacheTTLMinutes) * time.Minute
@@ -65,7 +87,7 @@ func main() {
 	log.Println("✓ RBAC middleware initialized")
 
 	// Setup router
-	router := setupRouter(taxHandler, db, rbacMiddleware)
+	router := setupRouter(taxHandler, db, rbacMiddleware, redisClient)
 
 	// Start server
 	log.Printf("Tax Service starting on port %s (env: %s)", cfg.Port, cfg.Environment)
@@ -75,8 +97,22 @@ func main() {
 }
 
 // setupRouter configures the HTTP router
-func setupRouter(taxHandler *handlers.TaxHandler, db *gorm.DB, rbacMiddleware *rbac.Middleware) *gin.Engine {
-	router := gin.Default()
+func setupRouter(taxHandler *handlers.TaxHandler, db *gorm.DB, rbacMiddleware *rbac.Middleware, redisClient *redis.Client) *gin.Engine {
+	router := gin.New()
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Println("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// CORS middleware
 	router.Use(func(c *gin.Context) {

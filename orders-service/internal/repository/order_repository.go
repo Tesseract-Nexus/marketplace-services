@@ -1,12 +1,24 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"orders-service/internal/models"
 	"gorm.io/gorm"
+)
+
+// Cache TTL constants for orders
+const (
+	OrderCacheTTL          = 10 * time.Minute // Orders - frequently accessed
+	OrderNumberCacheTTL    = 10 * time.Minute // Order lookups by number
+	OrderListCacheTTL      = 2 * time.Minute  // Order lists - frequent changes
+	ShippingMethodCacheTTL = 1 * time.Hour    // Shipping methods - rarely change
 )
 
 // OrderRepository defines the interface for order data operations
@@ -30,6 +42,9 @@ type OrderRepository interface {
 	CreateSplit(split *models.OrderSplit) error
 	GetChildOrders(parentOrderID uuid.UUID, tenantID string) ([]models.Order, error)
 	BatchGetByIDs(ids []uuid.UUID, tenantID string) ([]*models.Order, error)
+	// Health check methods for Redis
+	RedisHealth(ctx context.Context) error
+	CacheStats() *cache.CacheStats
 }
 
 // OrderFilters represents filters for querying orders
@@ -46,12 +61,78 @@ type OrderFilters struct {
 }
 
 type orderRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-// NewOrderRepository creates a new order repository
-func NewOrderRepository(db *gorm.DB) OrderRepository {
-	return &orderRepository{db: db}
+// NewOrderRepository creates a new order repository with optional Redis caching
+func NewOrderRepository(db *gorm.DB, redisClient *redis.Client) OrderRepository {
+	repo := &orderRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 5000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: OrderCacheTTL,
+			KeyPrefix:  "tesseract:orders:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateOrderCacheKey creates a cache key for order lookups by ID
+func generateOrderCacheKey(tenantID string, orderID uuid.UUID) string {
+	return fmt.Sprintf("order:%s:%s", tenantID, orderID.String())
+}
+
+// generateOrderNumberCacheKey creates a cache key for order lookups by number
+func generateOrderNumberCacheKey(tenantID string, orderNumber string) string {
+	return fmt.Sprintf("order:number:%s:%s", tenantID, orderNumber)
+}
+
+// invalidateOrderCaches invalidates all caches related to an order
+func (r *orderRepository) invalidateOrderCaches(ctx context.Context, tenantID string, orderID uuid.UUID, orderNumber string) {
+	if r.cache == nil {
+		return
+	}
+
+	// Invalidate specific order cache
+	orderKey := generateOrderCacheKey(tenantID, orderID)
+	_ = r.cache.Delete(ctx, orderKey)
+
+	// Invalidate order number cache if provided
+	if orderNumber != "" {
+		numberKey := generateOrderNumberCacheKey(tenantID, orderNumber)
+		_ = r.cache.Delete(ctx, numberKey)
+	}
+
+	// Invalidate list caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("order:list:%s:*", tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *orderRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *orderRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // Create creates a new order with all related entities
@@ -78,8 +159,23 @@ func (r *orderRepository) Create(order *models.Order) error {
 	})
 }
 
-// GetByID retrieves an order by ID with all related data
+// GetByID retrieves an order by ID with all related data (with caching)
 func (r *orderRepository) GetByID(id uuid.UUID, tenantID string) (*models.Order, error) {
+	ctx := context.Background()
+	cacheKey := generateOrderCacheKey(tenantID, id)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:orders:"+cacheKey).Result()
+		if err == nil {
+			var order models.Order
+			if err := json.Unmarshal([]byte(val), &order); err == nil {
+				return &order, nil
+			}
+		}
+	}
+
+	// Query from database
 	var order models.Order
 	err := r.db.Preload("Items").
 		Preload("Customer").
@@ -97,11 +193,34 @@ func (r *orderRepository) GetByID(id uuid.UUID, tenantID string) (*models.Order,
 		return nil, fmt.Errorf("failed to get order: %w", err)
 	}
 
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(order)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:orders:"+cacheKey, data, OrderCacheTTL)
+		}
+	}
+
 	return &order, nil
 }
 
-// GetByOrderNumber retrieves an order by order number
+// GetByOrderNumber retrieves an order by order number (with caching)
 func (r *orderRepository) GetByOrderNumber(orderNumber string, tenantID string) (*models.Order, error) {
+	ctx := context.Background()
+	cacheKey := generateOrderNumberCacheKey(tenantID, orderNumber)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:orders:"+cacheKey).Result()
+		if err == nil {
+			var order models.Order
+			if err := json.Unmarshal([]byte(val), &order); err == nil {
+				return &order, nil
+			}
+		}
+	}
+
+	// Query from database
 	var order models.Order
 	err := r.db.Preload("Items").
 		Preload("Customer").
@@ -117,6 +236,14 @@ func (r *orderRepository) GetByOrderNumber(orderNumber string, tenantID string) 
 			return nil, fmt.Errorf("order with number %s not found", orderNumber)
 		}
 		return nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(order)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:orders:"+cacheKey, data, OrderNumberCacheTTL)
+		}
 	}
 
 	return &order, nil
@@ -215,7 +342,7 @@ func (r *orderRepository) List(filters OrderFilters) ([]models.Order, int64, err
 
 // Update updates an existing order
 func (r *orderRepository) Update(order *models.Order) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(order).Error; err != nil {
 			return fmt.Errorf("failed to update order: %w", err)
 		}
@@ -234,11 +361,18 @@ func (r *orderRepository) Update(order *models.Order) error {
 
 		return nil
 	})
+
+	// Invalidate cache if update was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), order.TenantID, order.ID, order.OrderNumber)
+	}
+
+	return err
 }
 
 // Delete soft deletes an order
 func (r *orderRepository) Delete(id uuid.UUID, tenantID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("tenant_id = ?", tenantID).Delete(&models.Order{}, "id = ?", id).Error; err != nil {
 			return fmt.Errorf("failed to delete order: %w", err)
 		}
@@ -257,11 +391,18 @@ func (r *orderRepository) Delete(id uuid.UUID, tenantID string) error {
 
 		return nil
 	})
+
+	// Invalidate cache if delete was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+	}
+
+	return err
 }
 
 // UpdateStatus updates the status of an order
 func (r *orderRepository) UpdateStatus(id uuid.UUID, status models.OrderStatus, notes string, tenantID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// Update order status
 		if err := tx.Model(&models.Order{}).Where("id = ? AND tenant_id = ?", id, tenantID).Update("status", status).Error; err != nil {
 			return fmt.Errorf("failed to update order status: %w", err)
@@ -286,11 +427,18 @@ func (r *orderRepository) UpdateStatus(id uuid.UUID, status models.OrderStatus, 
 
 		return nil
 	})
+
+	// Invalidate cache if update was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+	}
+
+	return err
 }
 
 // UpdatePaymentStatus updates the payment status for an order
 func (r *orderRepository) UpdatePaymentStatus(id uuid.UUID, status models.PaymentStatus, transactionID string, processedAt *time.Time, tenantID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// First verify the order exists and belongs to tenant
 		var order models.Order
 		if err := tx.Where("id = ? AND tenant_id = ?", id, tenantID).First(&order).Error; err != nil {
@@ -336,11 +484,18 @@ func (r *orderRepository) UpdatePaymentStatus(id uuid.UUID, status models.Paymen
 
 		return nil
 	})
+
+	// Invalidate cache if update was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+	}
+
+	return err
 }
 
 // UpdateFulfillmentStatus updates the fulfillment status for an order
 func (r *orderRepository) UpdateFulfillmentStatus(id uuid.UUID, status models.FulfillmentStatus, notes string, tenantID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// First verify the order exists and belongs to tenant
 		var order models.Order
 		if err := tx.Where("id = ? AND tenant_id = ?", id, tenantID).First(&order).Error; err != nil {
@@ -371,11 +526,18 @@ func (r *orderRepository) UpdateFulfillmentStatus(id uuid.UUID, status models.Fu
 
 		return nil
 	})
+
+	// Invalidate cache if update was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+	}
+
+	return err
 }
 
 // UpdateShippingTracking updates the shipping tracking information for an order
 func (r *orderRepository) UpdateShippingTracking(id uuid.UUID, carrier string, trackingNumber string, trackingUrl string, tenantID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// Update shipping tracking in order_shipping table
 		updates := map[string]interface{}{
 			"carrier":         carrier,
@@ -410,15 +572,27 @@ func (r *orderRepository) UpdateShippingTracking(id uuid.UUID, carrier string, t
 
 		return nil
 	})
+
+	// Invalidate cache if update was successful
+	if err == nil {
+		r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+	}
+
+	return err
 }
 
 // UpdateCustomerID updates the customer ID for an order
 func (r *orderRepository) UpdateCustomerID(id uuid.UUID, customerID uuid.UUID, tenantID string) error {
-	if err := r.db.Model(&models.Order{}).
+	err := r.db.Model(&models.Order{}).
 		Where("id = ? AND tenant_id = ?", id, tenantID).
-		Update("customer_id", customerID).Error; err != nil {
+		Update("customer_id", customerID).Error
+	if err != nil {
 		return fmt.Errorf("failed to update customer ID: %w", err)
 	}
+
+	// Invalidate cache if update was successful
+	r.invalidateOrderCaches(context.Background(), tenantID, id, "")
+
 	return nil
 }
 

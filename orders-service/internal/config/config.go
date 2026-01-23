@@ -13,6 +13,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	App      AppConfig
+	RedisURL string
 }
 
 // ServerConfig holds server configuration
@@ -58,6 +59,7 @@ func Load() (*Config, error) {
 			LogLevel:    getEnv("LOG_LEVEL", "info"),
 			JWTSecret:   secrets.GetJWTSecret(), // Fetch from GCP Secret Manager if enabled
 		},
+		RedisURL: getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
 	}
 
 	return config, nil

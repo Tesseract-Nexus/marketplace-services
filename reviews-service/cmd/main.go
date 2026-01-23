@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -62,6 +65,25 @@ func main() {
 	}
 	log.Println("✓ Database migration completed")
 
+	// Initialize Redis client (graceful degradation if unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("⚠ Failed to parse Redis URL: %v (caching disabled)", err)
+		} else {
+			redisClient = redis.NewClient(opt)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("⚠ Failed to connect to Redis: %v (caching disabled)", err)
+				redisClient = nil
+			} else {
+				log.Println("✓ Redis connection established")
+			}
+		}
+	}
+
 	// Initialize logrus logger
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -85,8 +107,8 @@ func main() {
 	tenantClient := clients.NewTenantClient()
 	log.Println("✓ Notification client initialized")
 
-	// Initialize repository
-	reviewsRepo := repository.NewReviewsRepository(db)
+	// Initialize repository with Redis caching
+	reviewsRepo := repository.NewReviewsRepository(db, redisClient)
 
 	// Initialize handlers with notification client and events publisher
 	reviewsHandler := handlers.NewReviewsHandler(reviewsRepo, notificationClient, tenantClient, eventsPublisher)
@@ -100,6 +122,18 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Println("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// Add CORS middleware
 	router.Use(middleware.CORS())

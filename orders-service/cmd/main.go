@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -70,8 +71,34 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to parse Redis URL: %v", err)
+			log.Println("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("Warning: Failed to connect to Redis: %v", err)
+				log.Println("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				log.Println("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not configured, caching disabled")
+	}
+
 	// Initialize repositories
-	orderRepo := repository.NewOrderRepository(db)
+	orderRepo := repository.NewOrderRepository(db, redisClient)
 	returnRepo := repository.NewReturnRepository(db)
 	shippingMethodRepo := repository.NewShippingMethodRepository(db)
 
@@ -344,6 +371,15 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	// Setup middleware
 	router.Use(middleware.Recovery())
 	router.Use(middleware.RequestID())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	// Note: Redis client would need to be passed to setupRouter for distributed rate limiting
+	router.Use(gosharedmw.RateLimit())
+	log.Println("✓ Rate limiting enabled")
+
 	router.Use(middleware.SetupCORS())
 
 	// Add observability middleware (metrics + tracing)

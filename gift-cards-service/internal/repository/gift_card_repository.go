@@ -1,24 +1,95 @@
 package repository
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"gift-cards-service/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
+// Cache TTL constants for gift cards
+const (
+	GiftCardCacheTTL      = 15 * time.Minute // Individual gift card
+	GiftCardCodeCacheTTL  = 15 * time.Minute // Lookup by code
+	GiftCardStatsCacheTTL = 10 * time.Minute // Statistics
+)
+
 type GiftCardRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-func NewGiftCardRepository(db *gorm.DB) *GiftCardRepository {
-	return &GiftCardRepository{db: db}
+func NewGiftCardRepository(db *gorm.DB, redisClient *redis.Client) *GiftCardRepository {
+	repo := &GiftCardRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 2000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: GiftCardCacheTTL,
+			KeyPrefix:  "tesseract:giftcards:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateGiftCardCacheKey creates a cache key for gift card lookups
+func generateGiftCardCacheKey(tenantID string, giftCardID uuid.UUID) string {
+	return fmt.Sprintf("giftcard:%s:%s", tenantID, giftCardID.String())
+}
+
+// generateGiftCardCodeCacheKey creates a cache key for code lookups
+func generateGiftCardCodeCacheKey(tenantID, code string) string {
+	return fmt.Sprintf("giftcard:code:%s:%s", tenantID, code)
+}
+
+// invalidateGiftCardCaches invalidates all caches related to a gift card
+func (r *GiftCardRepository) invalidateGiftCardCaches(ctx context.Context, tenantID string, giftCardID uuid.UUID, code string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateGiftCardCacheKey(tenantID, giftCardID))
+	if code != "" {
+		_ = r.cache.Delete(ctx, generateGiftCardCodeCacheKey(tenantID, code))
+	}
+	// Invalidate list and stats caches for this tenant
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("giftcard:list:%s:*", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("giftcard:stats:%s", tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *GiftCardRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *GiftCardRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // GenerateUniqueCode generates a unique gift card code
@@ -67,11 +138,30 @@ func (r *GiftCardRepository) CreateGiftCard(tenantID string, giftCard *models.Gi
 	giftCard.CreatedAt = time.Now()
 	giftCard.UpdatedAt = time.Now()
 
-	return r.db.Create(giftCard).Error
+	err := r.db.Create(giftCard).Error
+	if err == nil {
+		r.invalidateGiftCardCaches(context.Background(), tenantID, giftCard.ID, giftCard.Code)
+	}
+	return err
 }
 
-// GetGiftCardByID retrieves a gift card by ID
+// GetGiftCardByID retrieves a gift card by ID (with caching)
 func (r *GiftCardRepository) GetGiftCardByID(tenantID string, id uuid.UUID) (*models.GiftCard, error) {
+	ctx := context.Background()
+	cacheKey := generateGiftCardCacheKey(tenantID, id)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:giftcards:"+cacheKey).Result()
+		if err == nil {
+			var giftCard models.GiftCard
+			if err := json.Unmarshal([]byte(val), &giftCard); err == nil {
+				return &giftCard, nil
+			}
+		}
+	}
+
+	// Query from database
 	var giftCard models.GiftCard
 	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, id).
 		Preload("Transactions").
@@ -79,11 +169,35 @@ func (r *GiftCardRepository) GetGiftCardByID(tenantID string, id uuid.UUID) (*mo
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(giftCard)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:giftcards:"+cacheKey, data, GiftCardCacheTTL)
+		}
+	}
+
 	return &giftCard, nil
 }
 
-// GetGiftCardByCode retrieves a gift card by code
+// GetGiftCardByCode retrieves a gift card by code (with caching)
 func (r *GiftCardRepository) GetGiftCardByCode(tenantID, code string) (*models.GiftCard, error) {
+	ctx := context.Background()
+	cacheKey := generateGiftCardCodeCacheKey(tenantID, code)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:giftcards:"+cacheKey).Result()
+		if err == nil {
+			var giftCard models.GiftCard
+			if err := json.Unmarshal([]byte(val), &giftCard); err == nil {
+				return &giftCard, nil
+			}
+		}
+	}
+
+	// Query from database
 	var giftCard models.GiftCard
 	err := r.db.Where("tenant_id = ? AND code = ?", tenantID, code).
 		Preload("Transactions").
@@ -91,6 +205,15 @@ func (r *GiftCardRepository) GetGiftCardByCode(tenantID, code string) (*models.G
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(giftCard)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:giftcards:"+cacheKey, data, GiftCardCodeCacheTTL)
+		}
+	}
+
 	return &giftCard, nil
 }
 
@@ -169,20 +292,42 @@ func (r *GiftCardRepository) ListGiftCards(tenantID string, req *models.SearchGi
 
 // UpdateGiftCard updates a gift card
 func (r *GiftCardRepository) UpdateGiftCard(tenantID string, id uuid.UUID, updates *models.GiftCard) error {
+	// Get existing gift card to get the code for cache invalidation
+	existing, _ := r.GetGiftCardByID(tenantID, id)
+	code := ""
+	if existing != nil {
+		code = existing.Code
+	}
+
 	updates.UpdatedAt = time.Now()
-	return r.db.Model(&models.GiftCard{}).
+	err := r.db.Model(&models.GiftCard{}).
 		Where("tenant_id = ? AND id = ?", tenantID, id).
 		Updates(updates).Error
+	if err == nil {
+		r.invalidateGiftCardCaches(context.Background(), tenantID, id, code)
+	}
+	return err
 }
 
 // UpdateGiftCardStatus updates gift card status
 func (r *GiftCardRepository) UpdateGiftCardStatus(tenantID string, id uuid.UUID, status models.GiftCardStatus) error {
-	return r.db.Model(&models.GiftCard{}).
+	// Get existing gift card to get the code for cache invalidation
+	existing, _ := r.GetGiftCardByID(tenantID, id)
+	code := ""
+	if existing != nil {
+		code = existing.Code
+	}
+
+	err := r.db.Model(&models.GiftCard{}).
 		Where("tenant_id = ? AND id = ?", tenantID, id).
 		Updates(map[string]interface{}{
 			"status":     status,
 			"updated_at": time.Now(),
 		}).Error
+	if err == nil {
+		r.invalidateGiftCardCaches(context.Background(), tenantID, id, code)
+	}
+	return err
 }
 
 // RedeemGiftCard redeems an amount from a gift card
@@ -267,6 +412,9 @@ func (r *GiftCardRepository) RedeemGiftCard(tenantID, code string, amount float6
 		return nil, err
 	}
 
+	// Invalidate cache after successful redemption
+	r.invalidateGiftCardCaches(context.Background(), tenantID, giftCard.ID, code)
+
 	return &giftCard, nil
 }
 
@@ -328,13 +476,31 @@ func (r *GiftCardRepository) RefundGiftCard(tenantID string, giftCardID uuid.UUI
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	// Invalidate cache after successful refund
+	r.invalidateGiftCardCaches(context.Background(), tenantID, giftCardID, giftCard.Code)
+
+	return nil
 }
 
 // DeleteGiftCard soft deletes a gift card
 func (r *GiftCardRepository) DeleteGiftCard(tenantID string, id uuid.UUID) error {
-	return r.db.Where("tenant_id = ? AND id = ?", tenantID, id).
+	// Get gift card to get code for cache invalidation
+	existing, _ := r.GetGiftCardByID(tenantID, id)
+	code := ""
+	if existing != nil {
+		code = existing.Code
+	}
+
+	err := r.db.Where("tenant_id = ? AND id = ?", tenantID, id).
 		Delete(&models.GiftCard{}).Error
+	if err == nil {
+		r.invalidateGiftCardCaches(context.Background(), tenantID, id, code)
+	}
+	return err
 }
 
 // GetGiftCardStats returns gift card statistics

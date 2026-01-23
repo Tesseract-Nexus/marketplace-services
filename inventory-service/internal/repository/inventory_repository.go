@@ -1,20 +1,125 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"inventory-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants
+const (
+	StockLevelCacheTTL    = 5 * time.Minute  // Stock levels - frequently accessed but changes on orders
+	StockListCacheTTL     = 2 * time.Minute  // Stock list cache - shorter due to frequent changes
+	WarehouseCacheTTL     = 30 * time.Minute // Warehouses rarely change
+	LowStockCacheTTL      = 1 * time.Minute  // Low stock alerts - needs to be fresh
+)
+
 type InventoryRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-func NewInventoryRepository(db *gorm.DB) *InventoryRepository {
-	return &InventoryRepository{db: db}
+func NewInventoryRepository(db *gorm.DB, redisClient *redis.Client) *InventoryRepository {
+	repo := &InventoryRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 5000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: StockLevelCacheTTL,
+			KeyPrefix:  "tesseract:inventory:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateStockCacheKey creates a cache key for stock level lookups
+func generateStockCacheKey(tenantID string, warehouseID, productID uuid.UUID, variantID *uuid.UUID) string {
+	if variantID != nil {
+		return fmt.Sprintf("stock:%s:%s:%s:%s", tenantID, warehouseID.String(), productID.String(), variantID.String())
+	}
+	return fmt.Sprintf("stock:%s:%s:%s:nil", tenantID, warehouseID.String(), productID.String())
+}
+
+// generateStockListCacheKey creates a cache key for stock level list
+func generateStockListCacheKey(tenantID string, warehouseID *uuid.UUID, page, limit int) string {
+	whID := "all"
+	if warehouseID != nil {
+		whID = warehouseID.String()
+	}
+	return fmt.Sprintf("stock:list:%s:%s:%d:%d", tenantID, whID, page, limit)
+}
+
+// invalidateStockCaches invalidates all caches related to stock for a product
+func (r *InventoryRepository) invalidateStockCaches(ctx context.Context, tenantID string, warehouseID, productID uuid.UUID, variantID *uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+
+	// Invalidate specific stock cache
+	stockKey := generateStockCacheKey(tenantID, warehouseID, productID, variantID)
+	_ = r.cache.Delete(ctx, stockKey)
+
+	// Invalidate list caches for this tenant (pattern-based)
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("stock:list:%s:*", tenantID))
+
+	// Invalidate low stock cache
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("stock:low:%s:*", tenantID))
+}
+
+// invalidateTenantStockListCaches invalidates all stock list caches for a tenant
+func (r *InventoryRepository) invalidateTenantStockListCaches(ctx context.Context, tenantID string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("stock:list:%s:*", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("stock:low:%s:*", tenantID))
+}
+
+// invalidateWarehouseCaches invalidates warehouse-related caches
+func (r *InventoryRepository) invalidateWarehouseCaches(ctx context.Context, tenantID string, warehouseID *uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+
+	if warehouseID != nil {
+		// Invalidate specific warehouse stock caches
+		_ = r.cache.DeletePattern(ctx, fmt.Sprintf("stock:list:%s:%s:*", tenantID, warehouseID.String()))
+	}
+	// Invalidate all warehouse lists
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("warehouse:*:%s:*", tenantID))
+}
+
+// Health returns the health status of Redis connection
+func (r *InventoryRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *InventoryRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // ========== Warehouse Operations ==========
@@ -493,8 +598,23 @@ func (r *InventoryRepository) CompleteInventoryTransfer(tenantID string, transfe
 
 // ========== Stock Level Operations ==========
 
-// GetStockLevel retrieves stock level for a product at a warehouse
+// GetStockLevel retrieves stock level for a product at a warehouse with caching
 func (r *InventoryRepository) GetStockLevel(tenantID string, warehouseID, productID uuid.UUID, variantID *uuid.UUID) (*models.StockLevel, error) {
+	ctx := context.Background()
+	cacheKey := generateStockCacheKey(tenantID, warehouseID, productID, variantID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:inventory:"+cacheKey).Result()
+		if err == nil {
+			var stock models.StockLevel
+			if err := json.Unmarshal([]byte(val), &stock); err == nil {
+				return &stock, nil
+			}
+		}
+	}
+
+	// Query from database
 	var stock models.StockLevel
 	query := r.db.Where("tenant_id = ? AND warehouse_id = ? AND product_id = ?", tenantID, warehouseID, productID)
 
@@ -519,6 +639,14 @@ func (r *InventoryRepository) GetStockLevel(tenantID string, warehouseID, produc
 			UpdatedAt:         time.Now(),
 		}
 		err = r.db.Create(&stock).Error
+	}
+
+	// Cache the result
+	if err == nil && r.redis != nil {
+		data, marshalErr := json.Marshal(stock)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:inventory:"+cacheKey, data, StockLevelCacheTTL)
+		}
 	}
 
 	return &stock, err
@@ -549,15 +677,20 @@ func (r *InventoryRepository) ListStockLevels(tenantID string, warehouseID *uuid
 	return stocks, total, err
 }
 
-// UpdateStockLevel updates stock quantity
+// UpdateStockLevel updates stock quantity and invalidates cache
 func (r *InventoryRepository) UpdateStockLevel(tenantID string, stockID uuid.UUID, quantityChange int) error {
+	ctx := context.Background()
+
+	// Get the stock record first to get warehouse/product IDs for cache invalidation
+	var currentStock models.StockLevel
+	if err := r.db.Where("tenant_id = ? AND id = ?", tenantID, stockID).First(&currentStock).Error; err != nil {
+		return err
+	}
+
+	var updateErr error
+
 	// If reducing stock, validate that we won't go negative
 	if quantityChange < 0 {
-		var currentStock models.StockLevel
-		if err := r.db.Where("tenant_id = ? AND id = ?", tenantID, stockID).First(&currentStock).Error; err != nil {
-			return err
-		}
-
 		// Calculate new quantities
 		newOnHand := currentStock.QuantityOnHand + quantityChange
 		newAvailable := currentStock.QuantityAvailable + quantityChange
@@ -570,24 +703,31 @@ func (r *InventoryRepository) UpdateStockLevel(tenantID string, stockID uuid.UUI
 			newAvailable = 0
 		}
 
-		return r.db.Model(&models.StockLevel{}).
+		updateErr = r.db.Model(&models.StockLevel{}).
 			Where("tenant_id = ? AND id = ?", tenantID, stockID).
 			Updates(map[string]interface{}{
 				"quantity_on_hand":   newOnHand,
 				"quantity_available": newAvailable,
 				"updated_at":         time.Now(),
 			}).Error
+	} else {
+		// For additions, use the existing logic
+		updateErr = r.db.Model(&models.StockLevel{}).
+			Where("tenant_id = ? AND id = ?", tenantID, stockID).
+			Updates(map[string]interface{}{
+				"quantity_on_hand":    gorm.Expr("quantity_on_hand + ?", quantityChange),
+				"quantity_available":  gorm.Expr("quantity_available + ?", quantityChange),
+				"last_restocked_at":   time.Now(),
+				"updated_at":          time.Now(),
+			}).Error
 	}
 
-	// For additions, use the existing logic
-	return r.db.Model(&models.StockLevel{}).
-		Where("tenant_id = ? AND id = ?", tenantID, stockID).
-		Updates(map[string]interface{}{
-			"quantity_on_hand":    gorm.Expr("quantity_on_hand + ?", quantityChange),
-			"quantity_available":  gorm.Expr("quantity_available + ?", quantityChange),
-			"last_restocked_at":   time.Now(),
-			"updated_at":          time.Now(),
-		}).Error
+	// Invalidate cache if update was successful
+	if updateErr == nil {
+		r.invalidateStockCaches(ctx, tenantID, currentStock.WarehouseID, currentStock.ProductID, currentStock.VariantID)
+	}
+
+	return updateErr
 }
 
 // addStockTx adds stock in a transaction

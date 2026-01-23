@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	RedisURL string
 	Carriers CarriersConfig
 }
 
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 			DBName:   getEnv("DB_NAME", "shipping"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
+		RedisURL: getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
 		// Carrier env vars are optional fallbacks - carriers are configured per-tenant via database
 		Carriers: CarriersConfig{
 			Shiprocket: carriers.CarrierConfig{

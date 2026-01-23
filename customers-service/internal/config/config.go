@@ -17,6 +17,7 @@ type Config struct {
 	Environment            string
 	NotificationServiceURL string
 	TenantServiceURL       string
+	RedisURL               string
 }
 
 // New creates a new configuration from environment variables
@@ -31,6 +32,7 @@ func New() *Config {
 		Environment:            getEnv("ENVIRONMENT", "development"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.global.svc.cluster.local:8090"),
 		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.global.svc.cluster.local:8087"),
+		RedisURL:               getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
 	}
 }
 

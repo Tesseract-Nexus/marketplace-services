@@ -13,6 +13,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"customers-service/internal/clients"
 	"customers-service/internal/config"
 	"customers-service/internal/events"
@@ -48,8 +49,34 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to parse Redis URL: %v", err)
+			log.Println("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("Warning: Failed to connect to Redis: %v", err)
+				log.Println("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				log.Println("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not configured, caching disabled")
+	}
+
 	// Initialize repositories
-	customerRepo := repository.NewCustomerRepository(db)
+	customerRepo := repository.NewCustomerRepository(db, redisClient)
 	segmentRepo := repository.NewSegmentRepository(db)
 	abandonedCartRepo := repository.NewAbandonedCartRepository(db)
 	customerListRepo := repository.NewCustomerListRepository(db)
@@ -128,6 +155,18 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		log.Println("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// Add observability middleware (metrics + tracing)
 	router.Use(metrics.Middleware())

@@ -2,21 +2,95 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"tax-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for tax data
+const (
+	JurisdictionCacheTTL    = 30 * time.Minute // Jurisdictions change infrequently
+	TaxRateCacheTTL         = 15 * time.Minute // Tax rates
+	ProductCategoryCacheTTL = 30 * time.Minute // Product categories
+	ExemptionCacheTTL       = 10 * time.Minute // Exemption certificates
+)
+
 // TaxRepository handles tax data operations
 type TaxRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
 // NewTaxRepository creates a new tax repository
-func NewTaxRepository(db *gorm.DB) *TaxRepository {
-	return &TaxRepository{db: db}
+func NewTaxRepository(db *gorm.DB, redisClient *redis.Client) *TaxRepository {
+	repo := &TaxRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 1000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: JurisdictionCacheTTL,
+			KeyPrefix:  "tesseract:tax:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateJurisdictionCacheKey creates a cache key for jurisdiction lookups
+func generateJurisdictionCacheKey(jurisdictionID uuid.UUID) string {
+	return fmt.Sprintf("jurisdiction:%s", jurisdictionID.String())
+}
+
+// generateProductCategoryCacheKey creates a cache key for product category lookups
+func generateProductCategoryCacheKey(categoryID uuid.UUID) string {
+	return fmt.Sprintf("category:%s", categoryID.String())
+}
+
+// generateExemptionCacheKey creates a cache key for exemption certificate lookups
+func generateExemptionCacheKey(tenantID string, customerID uuid.UUID) string {
+	return fmt.Sprintf("exemption:%s:%s", tenantID, customerID.String())
+}
+
+// invalidateJurisdictionCache invalidates jurisdiction-related caches
+func (r *TaxRepository) invalidateJurisdictionCache(ctx context.Context, jurisdictionID uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateJurisdictionCacheKey(jurisdictionID))
+	// Invalidate list caches
+	_ = r.cache.DeletePattern(ctx, "jurisdiction:list:*")
+}
+
+// invalidateProductCategoryCache invalidates product category caches
+func (r *TaxRepository) invalidateProductCategoryCache(ctx context.Context, categoryID uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateProductCategoryCacheKey(categoryID))
+	// Invalidate list caches
+	_ = r.cache.DeletePattern(ctx, "category:list:*")
+}
+
+// invalidateExemptionCache invalidates exemption certificate caches
+func (r *TaxRepository) invalidateExemptionCache(ctx context.Context, tenantID string, customerID uuid.UUID) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateExemptionCacheKey(tenantID, customerID))
 }
 
 // GetJurisdictionByLocation finds jurisdictions matching the given address (including global data)
@@ -120,11 +194,34 @@ func (r *TaxRepository) GetCustomerExemption(ctx context.Context, tenantID strin
 
 // GetProductCategory gets a product tax category by ID
 func (r *TaxRepository) GetProductCategory(ctx context.Context, categoryID uuid.UUID) (*models.ProductTaxCategory, error) {
+	cacheKey := generateProductCategoryCacheKey(categoryID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:tax:"+cacheKey).Result()
+		if err == nil {
+			var category models.ProductTaxCategory
+			if err := json.Unmarshal([]byte(val), &category); err == nil {
+				return &category, nil
+			}
+		}
+	}
+
+	// Query from database
 	var category models.ProductTaxCategory
 	err := r.db.WithContext(ctx).First(&category, "id = ?", categoryID).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(category)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:tax:"+cacheKey, data, ProductCategoryCacheTTL)
+		}
+	}
+
 	return &category, nil
 }
 
@@ -178,24 +275,50 @@ func (r *TaxRepository) ListTaxRates(ctx context.Context, jurisdictionID uuid.UU
 
 // CreateJurisdiction creates a new jurisdiction
 func (r *TaxRepository) CreateJurisdiction(ctx context.Context, jurisdiction *models.TaxJurisdiction) error {
-	return r.db.WithContext(ctx).Create(jurisdiction).Error
+	err := r.db.WithContext(ctx).Create(jurisdiction).Error
+	if err == nil {
+		r.invalidateJurisdictionCache(ctx, jurisdiction.ID)
+	}
+	return err
 }
 
 // UpdateJurisdiction updates a jurisdiction
 func (r *TaxRepository) UpdateJurisdiction(ctx context.Context, jurisdiction *models.TaxJurisdiction) error {
 	jurisdiction.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(jurisdiction).Error
+	err := r.db.WithContext(ctx).Save(jurisdiction).Error
+	if err == nil {
+		r.invalidateJurisdictionCache(ctx, jurisdiction.ID)
+	}
+	return err
 }
 
 // DeleteJurisdiction soft deletes a jurisdiction
 func (r *TaxRepository) DeleteJurisdiction(ctx context.Context, jurisdictionID uuid.UUID) error {
-	return r.db.WithContext(ctx).Model(&models.TaxJurisdiction{}).
+	err := r.db.WithContext(ctx).Model(&models.TaxJurisdiction{}).
 		Where("id = ?", jurisdictionID).
 		Update("is_active", false).Error
+	if err == nil {
+		r.invalidateJurisdictionCache(ctx, jurisdictionID)
+	}
+	return err
 }
 
 // GetJurisdiction gets a jurisdiction by ID
 func (r *TaxRepository) GetJurisdiction(ctx context.Context, jurisdictionID uuid.UUID) (*models.TaxJurisdiction, error) {
+	cacheKey := generateJurisdictionCacheKey(jurisdictionID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:tax:"+cacheKey).Result()
+		if err == nil {
+			var jurisdiction models.TaxJurisdiction
+			if err := json.Unmarshal([]byte(val), &jurisdiction); err == nil {
+				return &jurisdiction, nil
+			}
+		}
+	}
+
+	// Query from database
 	var jurisdiction models.TaxJurisdiction
 	err := r.db.WithContext(ctx).
 		Preload("Parent").
@@ -205,6 +328,15 @@ func (r *TaxRepository) GetJurisdiction(ctx context.Context, jurisdictionID uuid
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(jurisdiction)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:tax:"+cacheKey, data, JurisdictionCacheTTL)
+		}
+	}
+
 	return &jurisdiction, nil
 }
 
@@ -224,18 +356,30 @@ func (r *TaxRepository) ListJurisdictions(ctx context.Context, tenantID string) 
 
 // CreateProductCategory creates a new product tax category
 func (r *TaxRepository) CreateProductCategory(ctx context.Context, category *models.ProductTaxCategory) error {
-	return r.db.WithContext(ctx).Create(category).Error
+	err := r.db.WithContext(ctx).Create(category).Error
+	if err == nil {
+		r.invalidateProductCategoryCache(ctx, category.ID)
+	}
+	return err
 }
 
 // UpdateProductCategory updates a product tax category
 func (r *TaxRepository) UpdateProductCategory(ctx context.Context, category *models.ProductTaxCategory) error {
 	category.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(category).Error
+	err := r.db.WithContext(ctx).Save(category).Error
+	if err == nil {
+		r.invalidateProductCategoryCache(ctx, category.ID)
+	}
+	return err
 }
 
 // DeleteProductCategory deletes a product tax category
 func (r *TaxRepository) DeleteProductCategory(ctx context.Context, categoryID uuid.UUID) error {
-	return r.db.WithContext(ctx).Delete(&models.ProductTaxCategory{}, "id = ?", categoryID).Error
+	err := r.db.WithContext(ctx).Delete(&models.ProductTaxCategory{}, "id = ?", categoryID).Error
+	if err == nil {
+		r.invalidateProductCategoryCache(ctx, categoryID)
+	}
+	return err
 }
 
 // ListProductCategories lists all product tax categories (including global data)
@@ -250,13 +394,21 @@ func (r *TaxRepository) ListProductCategories(ctx context.Context, tenantID stri
 
 // CreateExemptionCertificate creates a new exemption certificate
 func (r *TaxRepository) CreateExemptionCertificate(ctx context.Context, cert *models.TaxExemptionCertificate) error {
-	return r.db.WithContext(ctx).Create(cert).Error
+	err := r.db.WithContext(ctx).Create(cert).Error
+	if err == nil {
+		r.invalidateExemptionCache(ctx, cert.TenantID, cert.CustomerID)
+	}
+	return err
 }
 
 // UpdateExemptionCertificate updates an exemption certificate
 func (r *TaxRepository) UpdateExemptionCertificate(ctx context.Context, cert *models.TaxExemptionCertificate) error {
 	cert.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(cert).Error
+	err := r.db.WithContext(ctx).Save(cert).Error
+	if err == nil {
+		r.invalidateExemptionCache(ctx, cert.TenantID, cert.CustomerID)
+	}
+	return err
 }
 
 // GetExemptionCertificate gets an exemption certificate by ID

@@ -1,12 +1,23 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"vendor-service/internal/models"
 	"gorm.io/gorm"
+)
+
+// Cache TTL constants for storefronts
+const (
+	StorefrontCacheTTL     = 15 * time.Minute // Individual storefront
+	StorefrontSlugCacheTTL = 30 * time.Minute // Slug lookups (used frequently for routing)
 )
 
 // StorefrontRepository defines the interface for storefront data operations
@@ -39,12 +50,54 @@ type StorefrontRepository interface {
 }
 
 type storefrontRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
 // NewStorefrontRepository creates a new storefront repository
-func NewStorefrontRepository(db *gorm.DB) StorefrontRepository {
-	return &storefrontRepository{db: db}
+func NewStorefrontRepository(db *gorm.DB, redisClient *redis.Client) StorefrontRepository {
+	repo := &storefrontRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 1000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: StorefrontCacheTTL,
+			KeyPrefix:  "tesseract:storefronts:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateStorefrontCacheKey creates a cache key for storefront lookups
+func generateStorefrontCacheKey(vendorID uuid.UUID, storefrontID uuid.UUID) string {
+	return fmt.Sprintf("storefront:%s:%s", vendorID.String(), storefrontID.String())
+}
+
+// generateStorefrontSlugCacheKey creates a cache key for slug lookups
+func generateStorefrontSlugCacheKey(slug string) string {
+	return fmt.Sprintf("storefront:slug:%s", strings.ToLower(slug))
+}
+
+// invalidateStorefrontCaches invalidates all caches related to a storefront
+func (r *storefrontRepository) invalidateStorefrontCaches(ctx context.Context, vendorID uuid.UUID, storefrontID uuid.UUID, slug string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generateStorefrontCacheKey(vendorID, storefrontID))
+	if slug != "" {
+		_ = r.cache.Delete(ctx, generateStorefrontSlugCacheKey(slug))
+	}
+	// Invalidate list caches for this vendor
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("storefront:list:%s:*", vendorID.String()))
 }
 
 func (r *storefrontRepository) Create(vendorID uuid.UUID, storefront *models.Storefront) error {
@@ -54,7 +107,11 @@ func (r *storefrontRepository) Create(vendorID uuid.UUID, storefront *models.Sto
 	storefront.UpdatedAt = time.Now()
 	storefront.Slug = strings.ToLower(storefront.Slug)
 
-	return r.db.Create(storefront).Error
+	err := r.db.Create(storefront).Error
+	if err == nil {
+		r.invalidateStorefrontCaches(context.Background(), vendorID, storefront.ID, storefront.Slug)
+	}
+	return err
 }
 
 func (r *storefrontRepository) GetByID(vendorID uuid.UUID, id uuid.UUID) (*models.Storefront, error) {
@@ -112,18 +169,40 @@ func (r *storefrontRepository) Update(vendorID uuid.UUID, id uuid.UUID, updates 
 
 	updateMap["updated_at"] = time.Now()
 
-	return r.db.Model(&models.Storefront{}).
+	// Get existing storefront to get slug for cache invalidation
+	existing, _ := r.GetByID(vendorID, id)
+	slug := ""
+	if existing != nil {
+		slug = existing.Slug
+	}
+
+	err := r.db.Model(&models.Storefront{}).
 		Where("vendor_id = ? AND id = ?", vendorID, id).
 		Updates(updateMap).Error
+	if err == nil {
+		r.invalidateStorefrontCaches(context.Background(), vendorID, id, slug)
+	}
+	return err
 }
 
 func (r *storefrontRepository) Delete(vendorID uuid.UUID, id uuid.UUID, deletedBy string) error {
-	return r.db.Model(&models.Storefront{}).
+	// Get existing storefront to get slug for cache invalidation
+	existing, _ := r.GetByID(vendorID, id)
+	slug := ""
+	if existing != nil {
+		slug = existing.Slug
+	}
+
+	err := r.db.Model(&models.Storefront{}).
 		Where("vendor_id = ? AND id = ?", vendorID, id).
 		Updates(map[string]interface{}{
 			"deleted_at": time.Now(),
 			"updated_by": deletedBy,
 		}).Error
+	if err == nil {
+		r.invalidateStorefrontCaches(context.Background(), vendorID, id, slug)
+	}
+	return err
 }
 
 func (r *storefrontRepository) List(vendorID uuid.UUID, page, limit int) ([]models.Storefront, *models.PaginationInfo, error) {
@@ -162,6 +241,21 @@ func (r *storefrontRepository) List(vendorID uuid.UUID, page, limit int) ([]mode
 }
 
 func (r *storefrontRepository) GetBySlug(slug string) (*models.Storefront, error) {
+	ctx := context.Background()
+	cacheKey := generateStorefrontSlugCacheKey(slug)
+
+	// Try to get from cache first (slug lookups are very frequent for routing)
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:storefronts:"+cacheKey).Result()
+		if err == nil {
+			var storefront models.Storefront
+			if err := json.Unmarshal([]byte(val), &storefront); err == nil {
+				return &storefront, nil
+			}
+		}
+	}
+
+	// Query from database
 	var storefront models.Storefront
 	err := r.db.Where("slug = ? AND is_active = true", strings.ToLower(slug)).
 		Preload("Vendor").
@@ -169,6 +263,14 @@ func (r *storefrontRepository) GetBySlug(slug string) (*models.Storefront, error
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(storefront)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:storefronts:"+cacheKey, data, StorefrontSlugCacheTTL)
+		}
 	}
 
 	return &storefront, nil

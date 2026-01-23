@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
 	"payment-service/internal/clients"
@@ -63,8 +65,34 @@ func main() {
 		log.Printf("Warning: Failed to seed gateway templates: %v", err)
 	}
 
+	// Initialize Redis client (optional - graceful degradation if Redis unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to parse Redis URL: %v", err)
+			log.Println("Continuing without Redis caching...")
+		} else {
+			redisClient = redis.NewClient(opt)
+
+			// Test Redis connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("Warning: Failed to connect to Redis: %v", err)
+				log.Println("Continuing without Redis caching...")
+				redisClient = nil
+			} else {
+				log.Println("✓ Connected to Redis for caching")
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not configured, caching disabled")
+	}
+
 	// Initialize repository
-	paymentRepo := repository.NewPaymentRepository(db)
+	paymentRepo := repository.NewPaymentRepository(db, redisClient)
 
 	// Initialize gateway factory
 	gatewayFactory := gateway.NewGatewayFactory()

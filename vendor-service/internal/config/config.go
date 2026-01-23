@@ -20,6 +20,9 @@ type Config struct {
 	DBName     string
 	DBSSLMode  string
 
+	// Redis
+	RedisURL string
+
 	// Server
 	Port        string
 	Environment string
@@ -58,6 +61,9 @@ func Load() *Config {
 		DBPassword: secrets.GetDBPassword(),
 		DBName:     getEnv("DB_NAME", "vendor_db"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
+
+		// Redis
+		RedisURL: getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
 
 		// Server
 		Port:        getEnv("PORT", "8081"),

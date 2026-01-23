@@ -19,6 +19,9 @@ type Config struct {
 	// Database
 	DatabaseURL string
 
+	// Redis
+	RedisURL string
+
 	// Notification service for email notifications
 	NotificationServiceURL string
 	TenantServiceURL       string
@@ -108,6 +111,7 @@ func Load() *Config {
 		Port:        getEnv("PORT", "8092"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 		DatabaseURL:            buildDatabaseURL(),
+		RedisURL:               getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.global.svc.cluster.local:8090"),
 		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.global.svc.cluster.local:8080"),
 

@@ -2,21 +2,95 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"payment-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for payments
+const (
+	GatewayConfigCacheTTL  = 30 * time.Minute // Gateway configs - important for payment processing
+	PaymentSettingsCacheTTL = 30 * time.Minute // Payment settings
+	PaymentMethodsCacheTTL  = 15 * time.Minute // Payment methods by country
+)
+
 // PaymentRepository handles payment data operations
 type PaymentRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-// NewPaymentRepository creates a new payment repository
-func NewPaymentRepository(db *gorm.DB) *PaymentRepository {
-	return &PaymentRepository{db: db}
+// NewPaymentRepository creates a new payment repository with optional Redis caching
+func NewPaymentRepository(db *gorm.DB, redisClient *redis.Client) *PaymentRepository {
+	repo := &PaymentRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 1000,
+			L1TTL:      1 * time.Minute,
+			DefaultTTL: GatewayConfigCacheTTL,
+			KeyPrefix:  "tesseract:payments:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateGatewayConfigCacheKey creates a cache key for gateway config lookups
+func generateGatewayConfigCacheKey(tenantID string, configID uuid.UUID) string {
+	return fmt.Sprintf("gateway:%s:%s", tenantID, configID.String())
+}
+
+// generatePaymentSettingsCacheKey creates a cache key for payment settings
+func generatePaymentSettingsCacheKey(tenantID string) string {
+	return fmt.Sprintf("settings:%s", tenantID)
+}
+
+// invalidateGatewayConfigCaches invalidates all gateway config related caches
+func (r *PaymentRepository) invalidateGatewayConfigCaches(ctx context.Context, tenantID string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("gateway:%s:*", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("gateway:list:%s", tenantID))
+}
+
+// invalidatePaymentSettingsCaches invalidates payment settings cache
+func (r *PaymentRepository) invalidatePaymentSettingsCaches(ctx context.Context, tenantID string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.Delete(ctx, generatePaymentSettingsCacheKey(tenantID))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *PaymentRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *PaymentRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // GetGatewayConfig gets a gateway configuration by ID
@@ -51,18 +125,37 @@ func (r *PaymentRepository) ListGatewayConfigs(ctx context.Context, tenantID str
 
 // CreateGatewayConfig creates a new gateway configuration
 func (r *PaymentRepository) CreateGatewayConfig(ctx context.Context, config *models.PaymentGatewayConfig) error {
-	return r.db.WithContext(ctx).Create(config).Error
+	err := r.db.WithContext(ctx).Create(config).Error
+	if err == nil {
+		r.invalidateGatewayConfigCaches(ctx, config.TenantID)
+	}
+	return err
 }
 
 // UpdateGatewayConfig updates a gateway configuration
 func (r *PaymentRepository) UpdateGatewayConfig(ctx context.Context, config *models.PaymentGatewayConfig) error {
 	config.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(config).Error
+	err := r.db.WithContext(ctx).Save(config).Error
+	if err == nil {
+		r.invalidateGatewayConfigCaches(ctx, config.TenantID)
+	}
+	return err
 }
 
 // DeleteGatewayConfig deletes a gateway configuration
 func (r *PaymentRepository) DeleteGatewayConfig(ctx context.Context, configID uuid.UUID) error {
-	return r.db.WithContext(ctx).Delete(&models.PaymentGatewayConfig{}, "id = ?", configID).Error
+	// Get config to get tenant ID for cache invalidation
+	config, _ := r.GetGatewayConfig(ctx, configID)
+	tenantID := ""
+	if config != nil {
+		tenantID = config.TenantID
+	}
+
+	err := r.db.WithContext(ctx).Delete(&models.PaymentGatewayConfig{}, "id = ?", configID).Error
+	if err == nil && tenantID != "" {
+		r.invalidateGatewayConfigCaches(ctx, tenantID)
+	}
+	return err
 }
 
 // CreatePaymentTransaction creates a new payment transaction
@@ -187,25 +280,56 @@ func (r *PaymentRepository) ListUnprocessedWebhookEvents(ctx context.Context, li
 	return events, nil
 }
 
-// GetPaymentSettings gets payment settings for a tenant
+// GetPaymentSettings gets payment settings for a tenant (with caching)
 func (r *PaymentRepository) GetPaymentSettings(ctx context.Context, tenantID string) (*models.PaymentSettings, error) {
+	cacheKey := generatePaymentSettingsCacheKey(tenantID)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:payments:"+cacheKey).Result()
+		if err == nil {
+			var settings models.PaymentSettings
+			if err := json.Unmarshal([]byte(val), &settings); err == nil {
+				return &settings, nil
+			}
+		}
+	}
+
+	// Query from database
 	var settings models.PaymentSettings
 	err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).First(&settings).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(settings)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:payments:"+cacheKey, data, PaymentSettingsCacheTTL)
+		}
+	}
+
 	return &settings, nil
 }
 
 // CreatePaymentSettings creates payment settings
 func (r *PaymentRepository) CreatePaymentSettings(ctx context.Context, settings *models.PaymentSettings) error {
-	return r.db.WithContext(ctx).Create(settings).Error
+	err := r.db.WithContext(ctx).Create(settings).Error
+	if err == nil {
+		r.invalidatePaymentSettingsCaches(ctx, settings.TenantID)
+	}
+	return err
 }
 
 // UpdatePaymentSettings updates payment settings
 func (r *PaymentRepository) UpdatePaymentSettings(ctx context.Context, settings *models.PaymentSettings) error {
 	settings.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(settings).Error
+	err := r.db.WithContext(ctx).Save(settings).Error
+	if err == nil {
+		r.invalidatePaymentSettingsCaches(ctx, settings.TenantID)
+	}
+	return err
 }
 
 // SavePaymentMethod saves a payment method

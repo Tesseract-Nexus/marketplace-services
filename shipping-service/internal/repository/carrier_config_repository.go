@@ -6,18 +6,73 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"shipping-service/internal/models"
 	"gorm.io/gorm"
 )
 
+// Cache TTL constants for carrier config
+const (
+	CarrierConfigCacheTTL   = 6 * time.Hour  // Carrier configs - rarely change
+	CarrierTemplateCacheTTL = 24 * time.Hour // Templates - static data
+	ShippingSettingsCacheTTL = 6 * time.Hour // Settings - rarely change
+)
+
 // CarrierConfigRepository handles carrier configuration database operations
 type CarrierConfigRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-// NewCarrierConfigRepository creates a new carrier config repository
-func NewCarrierConfigRepository(db *gorm.DB) *CarrierConfigRepository {
-	return &CarrierConfigRepository{db: db}
+// NewCarrierConfigRepository creates a new carrier config repository with optional Redis caching
+func NewCarrierConfigRepository(db *gorm.DB, redisClient *redis.Client) *CarrierConfigRepository {
+	repo := &CarrierConfigRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 1000,
+			L1TTL:      1 * time.Minute,
+			DefaultTTL: CarrierConfigCacheTTL,
+			KeyPrefix:  "tesseract:shipping:carrier:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *CarrierConfigRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *CarrierConfigRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
+}
+
+// invalidateCarrierConfigCaches invalidates all carrier config related caches for a tenant
+func (r *CarrierConfigRepository) invalidateCarrierConfigCaches(ctx context.Context, tenantID string) {
+	if r.cache == nil {
+		return
+	}
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("*:%s:*", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("settings:%s", tenantID))
+	_ = r.cache.DeletePattern(ctx, fmt.Sprintf("matrix:%s", tenantID))
 }
 
 // ==================== Carrier Config Methods ====================

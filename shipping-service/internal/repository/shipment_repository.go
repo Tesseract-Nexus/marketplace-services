@@ -1,12 +1,22 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/Tesseract-Nexus/go-shared/cache"
 	"shipping-service/internal/models"
 	"gorm.io/gorm"
+)
+
+// Cache TTL constants for shipments
+const (
+	ShipmentCacheTTL  = 2 * time.Hour   // Shipment - frequently accessed for tracking
+	TrackingCacheTTL  = 30 * time.Minute // Tracking events - may update frequently
 )
 
 // ShipmentRepository handles database operations for shipments
@@ -22,15 +32,84 @@ type ShipmentRepository interface {
 	AddTrackingEvent(event *models.ShipmentTracking) error
 	GetTrackingEvents(shipmentID uuid.UUID, tenantID string) ([]*models.ShipmentTracking, error)
 	Cancel(id uuid.UUID, tenantID string) error
+	// Health check methods
+	RedisHealth(ctx context.Context) error
+	CacheStats() *cache.CacheStats
 }
 
 type shipmentRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
+	cache *cache.CacheLayer
 }
 
-// NewShipmentRepository creates a new shipment repository
-func NewShipmentRepository(db *gorm.DB) ShipmentRepository {
-	return &shipmentRepository{db: db}
+// NewShipmentRepository creates a new shipment repository with optional Redis caching
+func NewShipmentRepository(db *gorm.DB, redisClient *redis.Client) ShipmentRepository {
+	repo := &shipmentRepository{
+		db:    db,
+		redis: redisClient,
+	}
+
+	// Initialize CacheLayer with the existing Redis client
+	if redisClient != nil {
+		cacheConfig := cache.CacheConfig{
+			L1Enabled:  true,
+			L1MaxItems: 5000,
+			L1TTL:      30 * time.Second,
+			DefaultTTL: ShipmentCacheTTL,
+			KeyPrefix:  "tesseract:shipping:",
+		}
+		repo.cache = cache.NewCacheLayerFromClient(redisClient, cacheConfig)
+	}
+
+	return repo
+}
+
+// generateShipmentCacheKey creates a cache key for shipment lookups
+func generateShipmentCacheKey(tenantID string, shipmentID uuid.UUID) string {
+	return fmt.Sprintf("shipment:%s:%s", tenantID, shipmentID.String())
+}
+
+// generateTrackingCacheKey creates a cache key for tracking lookups
+func generateTrackingCacheKey(tenantID, trackingNumber string) string {
+	return fmt.Sprintf("shipment:tracking:%s:%s", tenantID, trackingNumber)
+}
+
+// invalidateShipmentCaches invalidates all caches related to a shipment
+func (r *shipmentRepository) invalidateShipmentCaches(ctx context.Context, tenantID string, shipmentID uuid.UUID, trackingNumber string) {
+	if r.cache == nil {
+		return
+	}
+
+	// Invalidate specific shipment cache
+	shipmentKey := generateShipmentCacheKey(tenantID, shipmentID)
+	_ = r.cache.Delete(ctx, shipmentKey)
+
+	// Invalidate tracking number cache if provided
+	if trackingNumber != "" {
+		trackingKey := generateTrackingCacheKey(tenantID, trackingNumber)
+		_ = r.cache.Delete(ctx, trackingKey)
+	}
+
+	// Invalidate tracking events cache
+	_ = r.cache.Delete(ctx, fmt.Sprintf("shipment:events:%s:%s", tenantID, shipmentID.String()))
+}
+
+// RedisHealth returns the health status of Redis connection
+func (r *shipmentRepository) RedisHealth(ctx context.Context) error {
+	if r.redis == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return r.redis.Ping(ctx).Err()
+}
+
+// CacheStats returns cache statistics
+func (r *shipmentRepository) CacheStats() *cache.CacheStats {
+	if r.cache == nil {
+		return nil
+	}
+	stats := r.cache.Stats()
+	return &stats
 }
 
 // Create creates a new shipment
@@ -46,8 +125,23 @@ func (r *shipmentRepository) Create(shipment *models.Shipment) error {
 	return r.db.Create(shipment).Error
 }
 
-// GetByID retrieves a shipment by ID
+// GetByID retrieves a shipment by ID (with caching)
 func (r *shipmentRepository) GetByID(id uuid.UUID, tenantID string) (*models.Shipment, error) {
+	ctx := context.Background()
+	cacheKey := generateShipmentCacheKey(tenantID, id)
+
+	// Try to get from cache first
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, "tesseract:shipping:"+cacheKey).Result()
+		if err == nil {
+			var shipment models.Shipment
+			if err := json.Unmarshal([]byte(val), &shipment); err == nil {
+				return &shipment, nil
+			}
+		}
+	}
+
+	// Query from database
 	var shipment models.Shipment
 	err := r.db.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Tracking").
@@ -55,6 +149,15 @@ func (r *shipmentRepository) GetByID(id uuid.UUID, tenantID string) (*models.Shi
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(shipment)
+		if marshalErr == nil {
+			r.redis.Set(ctx, "tesseract:shipping:"+cacheKey, data, ShipmentCacheTTL)
+		}
+	}
+
 	return &shipment, nil
 }
 

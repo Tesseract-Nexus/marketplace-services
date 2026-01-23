@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -67,6 +70,25 @@ func main() {
 	}
 	logger.Info("Database migrations completed")
 
+	// Initialize Redis client (graceful degradation if unavailable)
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			logger.Warnf("⚠ Failed to parse Redis URL: %v (caching disabled)", err)
+		} else {
+			redisClient = redis.NewClient(opt)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				logger.Warnf("⚠ Failed to connect to Redis: %v (caching disabled)", err)
+				redisClient = nil
+			} else {
+				logger.Info("✓ Redis connection established")
+			}
+		}
+	}
+
 	// Initialize NATS events publisher
 	eventsPublisher, err := events.NewPublisher(logger)
 	if err != nil {
@@ -76,8 +98,8 @@ func main() {
 		logger.Info("✓ NATS events publisher initialized")
 	}
 
-	// Initialize repository
-	giftCardRepo := repository.NewGiftCardRepository(db)
+	// Initialize repository with Redis caching
+	giftCardRepo := repository.NewGiftCardRepository(db, redisClient)
 
 	// Initialize handlers
 	giftCardHandler := handlers.NewGiftCardHandler(giftCardRepo)
@@ -98,6 +120,18 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+
+	// Security headers middleware
+	router.Use(gosharedmw.SecurityHeaders())
+
+	// Rate limiting middleware (uses Redis for distributed rate limiting)
+	if redisClient != nil {
+		router.Use(gosharedmw.RedisRateLimitMiddlewareWithProfile(redisClient, "standard"))
+		logger.Info("✓ Redis-based rate limiting enabled")
+	} else {
+		router.Use(gosharedmw.RateLimit())
+		logger.Info("✓ In-memory rate limiting enabled (Redis unavailable)")
+	}
 
 	// Add CORS middleware
 	router.Use(middleware.CORS())
