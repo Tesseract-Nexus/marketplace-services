@@ -221,6 +221,8 @@ func setupRouter(cfg *config.Config, vendorHandler *handlers.VendorHandler, docu
 		internal.GET("/vendors", vendorHandler.GetVendorList)
 		// Internal storefront lookup by slug - used by tenant-service for storefront-based tenant resolution
 		internal.GET("/storefronts/by-slug/:slug", storefrontHandler.GetStorefrontBySlug)
+		// Internal vendor storefronts lookup - used by tenant-service for reconciliation
+		internal.GET("/vendors/:id/storefronts", storefrontHandler.GetVendorStorefronts)
 	}
 
 	// API v1 routes
