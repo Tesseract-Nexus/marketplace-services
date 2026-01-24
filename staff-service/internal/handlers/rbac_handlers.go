@@ -74,20 +74,18 @@ func (h *RBACHandler) invalidateTenantCache(tenantID string) {
 
 // Helper functions
 func (h *RBACHandler) getTenantAndVendor(c *gin.Context) (string, *string) {
-	// Try context first (set by middleware for authenticated routes)
-	tenantID := c.GetString("tenant_id")
-	// Fallback to headers for internal service-to-service calls
-	if tenantID == "" {
-		tenantID = c.GetHeader("X-Tenant-ID")
-	}
-	// Also check JWT claim header (set by BFF when forwarding requests)
-	if tenantID == "" {
-		tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+	// Get tenant_id from IstioAuth context (set by middleware)
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 
-	vendorID := c.GetString("vendor_id")
-	if vendorID == "" {
-		vendorID = c.GetHeader("X-Vendor-ID")
+	// Get vendor_id from IstioAuth context
+	vendorIDVal, _ := c.Get("vendor_id")
+	vendorID := ""
+	if vendorIDVal != nil {
+		vendorID = vendorIDVal.(string)
 	}
 	if vendorID == "" {
 		return tenantID, nil
@@ -1238,14 +1236,15 @@ type SeedVendorRolesRequest struct {
 // This is an internal endpoint called by vendor-service when creating external vendors
 // It creates vendor_owner, vendor_admin, vendor_manager, vendor_staff roles for the vendor
 func (h *RBACHandler) SeedVendorRoles(c *gin.Context) {
-	tenantID := c.GetString("tenant_id")
-	if tenantID == "" {
-		tenantID = c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
-			Error:   models.Error{Code: "MISSING_TENANT_ID", Message: "X-Tenant-ID header is required"},
+			Error:   models.Error{Code: "MISSING_TENANT_ID", Message: "tenant_id is required"},
 		})
 		return
 	}
@@ -1783,17 +1782,13 @@ func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 	tenantID, vendorID := h.getTenantAndVendor(c)
 
-	// Get user ID from context - try staff_id first, then user_id, then headers
+	// Get user ID from IstioAuth context - try staff_id first, then user_id
 	userIDStr := c.GetString("staff_id")
 	if userIDStr == "" {
-		userIDStr = c.GetString("user_id")
-	}
-	// Fallback to headers for BFF calls that bypass Istio auth
-	if userIDStr == "" {
-		userIDStr = c.GetHeader("X-User-ID")
-	}
-	if userIDStr == "" {
-		userIDStr = c.GetHeader("x-jwt-claim-sub") // BFF forwards JWT sub claim here
+		userIDVal, _ := c.Get("user_id")
+		if userIDVal != nil {
+			userIDStr = userIDVal.(string)
+		}
 	}
 
 	if userIDStr == "" {
@@ -1877,16 +1872,13 @@ func (h *RBACHandler) GetMyEffectivePermissions(c *gin.Context) {
 func (h *RBACHandler) SyncMyRoles(c *gin.Context) {
 	tenantID, vendorID := h.getTenantAndVendor(c)
 
-	// Get user ID from context
+	// Get user ID from IstioAuth context
 	userIDStr := c.GetString("staff_id")
 	if userIDStr == "" {
-		userIDStr = c.GetString("user_id")
-	}
-	if userIDStr == "" {
-		userIDStr = c.GetHeader("X-User-ID")
-	}
-	if userIDStr == "" {
-		userIDStr = c.GetHeader("x-jwt-claim-sub")
+		userIDVal, _ := c.Get("user_id")
+		if userIDVal != nil {
+			userIDStr = userIDVal.(string)
+		}
 	}
 
 	if userIDStr == "" {
@@ -2124,14 +2116,15 @@ type BootstrapOwnerRequest struct {
 // This is an internal endpoint called by tenant-service during onboarding
 // It bypasses RBAC since the owner doesn't exist yet
 func (h *RBACHandler) BootstrapOwner(c *gin.Context) {
-	tenantID := c.GetString("tenant_id")
-	if tenantID == "" {
-		tenantID = c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
-			Error:   models.Error{Code: "MISSING_TENANT_ID", Message: "X-Tenant-ID header is required"},
+			Error:   models.Error{Code: "MISSING_TENANT_ID", Message: "tenant_id is required"},
 		})
 		return
 	}

@@ -18,10 +18,17 @@ func DevelopmentAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Extract user ID from headers (set by gateway/proxy)
-		userID := c.GetHeader("X-User-ID")
+		// Get user ID from context (set by IstioAuth)
+		userIDVal, _ := c.Get("user_id")
+		userID := ""
+		if userIDVal != nil {
+			userID = userIDVal.(string)
+		}
 		if userID == "" {
-			userID = c.GetHeader("X-Staff-ID")
+			staffIDVal, _ := c.Get("staff_id")
+			if staffIDVal != nil {
+				userID = staffIDVal.(string)
+			}
 		}
 
 		// Try to extract from JWT token if no header

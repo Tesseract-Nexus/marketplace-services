@@ -49,10 +49,14 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 	}
 }
 
-// TenantMiddleware extracts tenant ID from headers or context
+// TenantMiddleware extracts tenant ID from IstioAuth context or query params
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tenantID := c.GetHeader("X-Tenant-ID")
+		tenantIDVal, _ := c.Get("tenant_id")
+		tenantID := ""
+		if tenantIDVal != nil {
+			tenantID = tenantIDVal.(string)
+		}
 		if tenantID == "" {
 			tenantID = c.Query("tenantId")
 		}

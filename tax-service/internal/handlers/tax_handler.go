@@ -497,7 +497,11 @@ func (h *TaxHandler) UpdateExemptionCertificate(c *gin.Context) {
 
 // Helper function to get tenant ID from context
 func getTenantID(c *gin.Context) string {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
 		// Default to demo tenant for development
 		return "00000000-0000-0000-0000-000000000001"

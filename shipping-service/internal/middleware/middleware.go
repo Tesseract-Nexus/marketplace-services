@@ -32,9 +32,12 @@ func TenantMiddleware() gin.HandlerFunc {
 		// First, check if tenant_id was already set by IstioAuth middleware
 		tenantID := c.GetString("tenant_id")
 
-		// If not set by IstioAuth, extract from header
+		// If not set by IstioAuth via GetString, try Get for interface{}
 		if tenantID == "" {
-			tenantID = c.GetHeader("X-Tenant-ID")
+			tenantIDVal, _ := c.Get("tenant_id")
+			if tenantIDVal != nil {
+				tenantID = tenantIDVal.(string)
+			}
 		}
 
 		// Set tenant_id in context (even if empty - upstream middleware handles validation)

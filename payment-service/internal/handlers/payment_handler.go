@@ -348,9 +348,13 @@ func (h *PaymentHandler) DeleteGatewayConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Gateway config deleted successfully"})
 }
 
-// getTenantID extracts tenant ID from context
+// getTenantID extracts tenant ID from context (IstioAuth)
 func getTenantID(c *gin.Context) string {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
 		return "00000000-0000-0000-0000-000000000001" // Default tenant
 	}

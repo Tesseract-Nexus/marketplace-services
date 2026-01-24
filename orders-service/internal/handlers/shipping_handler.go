@@ -31,9 +31,10 @@ func NewShippingHandler(repo *repository.ShippingMethodRepository) *ShippingHand
 // @Failure 500 {object} map[string]interface{}
 // @Router /shipping-methods [get]
 func (h *ShippingHandler) ListShippingMethods(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = c.GetString("tenantID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tenant ID is required"})
@@ -129,9 +130,10 @@ type CreateShippingMethodRequest struct {
 // @Failure 400 {object} map[string]interface{}
 // @Router /shipping-methods [post]
 func (h *ShippingHandler) CreateShippingMethod(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = c.GetString("tenantID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tenant ID is required"})

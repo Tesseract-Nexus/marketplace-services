@@ -17,14 +17,22 @@ func DevelopmentAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Check for X-User-ID header (from proxy)
-		userID := c.GetHeader("X-User-ID")
+		// Get user ID from context (set by IstioAuth)
+		userIDVal, _ := c.Get("user_id")
+		userID := ""
+		if userIDVal != nil {
+			userID = userIDVal.(string)
+		}
 		if userID == "" {
 			userID = "00000000-0000-0000-0000-000000000001" // Valid UUID for dev
 		}
 
-		// Check for X-Tenant-ID header
-		tenantID := c.GetHeader("X-Tenant-ID")
+		// Get tenant ID from context (set by IstioAuth)
+		tenantIDVal, _ := c.Get("tenant_id")
+		tenantID := ""
+		if tenantIDVal != nil {
+			tenantID = tenantIDVal.(string)
+		}
 		if tenantID == "" {
 			tenantID = "00000000-0000-0000-0000-000000000001"
 		}

@@ -24,9 +24,13 @@ func NewAbandonedCartHandler(service *services.AbandonedCartService) *AbandonedC
 // List returns abandoned carts with filters and pagination
 // GET /api/v1/carts/abandoned
 func (h *AbandonedCartHandler) List(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -93,9 +97,13 @@ func (h *AbandonedCartHandler) List(c *gin.Context) {
 // GetByID returns a single abandoned cart by ID
 // GET /api/v1/carts/abandoned/:id
 func (h *AbandonedCartHandler) GetByID(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -117,9 +125,13 @@ func (h *AbandonedCartHandler) GetByID(c *gin.Context) {
 // GetStats returns abandoned cart statistics
 // GET /api/v1/carts/abandoned/stats
 func (h *AbandonedCartHandler) GetStats(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -151,9 +163,13 @@ func (h *AbandonedCartHandler) GetStats(c *gin.Context) {
 // GetSettings returns abandoned cart settings for the tenant
 // GET /api/v1/carts/abandoned/settings
 func (h *AbandonedCartHandler) GetSettings(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -169,9 +185,13 @@ func (h *AbandonedCartHandler) GetSettings(c *gin.Context) {
 // UpdateSettings updates abandoned cart settings for the tenant
 // PUT /api/v1/carts/abandoned/settings
 func (h *AbandonedCartHandler) UpdateSettings(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -194,9 +214,13 @@ func (h *AbandonedCartHandler) UpdateSettings(c *gin.Context) {
 // Delete deletes an abandoned cart
 // DELETE /api/v1/carts/abandoned/:id
 func (h *AbandonedCartHandler) Delete(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -217,9 +241,13 @@ func (h *AbandonedCartHandler) Delete(c *gin.Context) {
 // GetRecoveryAttempts returns recovery attempts for an abandoned cart
 // GET /api/v1/carts/abandoned/:id/attempts
 func (h *AbandonedCartHandler) GetRecoveryAttempts(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -241,9 +269,13 @@ func (h *AbandonedCartHandler) GetRecoveryAttempts(c *gin.Context) {
 // TriggerDetection manually triggers abandoned cart detection
 // POST /api/v1/carts/abandoned/detect
 func (h *AbandonedCartHandler) TriggerDetection(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -262,9 +294,13 @@ func (h *AbandonedCartHandler) TriggerDetection(c *gin.Context) {
 // TriggerReminders manually triggers sending reminder emails
 // POST /api/v1/carts/abandoned/send-reminders
 func (h *AbandonedCartHandler) TriggerReminders(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -298,9 +334,13 @@ func (h *AbandonedCartHandler) TriggerReminders(c *gin.Context) {
 // MarkRecovered marks an abandoned cart as recovered (called when order is placed)
 // POST /api/v1/carts/abandoned/recovered
 func (h *AbandonedCartHandler) MarkRecovered(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -332,9 +372,13 @@ func (h *AbandonedCartHandler) MarkRecovered(c *gin.Context) {
 // ExpireOldCarts manually triggers expiration of old carts
 // POST /api/v1/carts/abandoned/expire
 func (h *AbandonedCartHandler) ExpireOldCarts(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 

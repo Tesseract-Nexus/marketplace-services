@@ -22,9 +22,13 @@ func NewCustomerListHandler(service *services.CustomerListService) *CustomerList
 // GetLists returns all lists for a customer
 // GET /api/v1/customers/:id/lists
 func (h *CustomerListHandler) GetLists(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -49,9 +53,13 @@ func (h *CustomerListHandler) GetLists(c *gin.Context) {
 // GetList returns a single list with items
 // GET /api/v1/customers/:id/lists/:listId
 func (h *CustomerListHandler) GetList(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -89,9 +97,13 @@ func (h *CustomerListHandler) GetList(c *gin.Context) {
 // CreateList creates a new list
 // POST /api/v1/customers/:id/lists
 func (h *CustomerListHandler) CreateList(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -119,9 +131,13 @@ func (h *CustomerListHandler) CreateList(c *gin.Context) {
 // UpdateList updates a list
 // PUT /api/v1/customers/:id/lists/:listId
 func (h *CustomerListHandler) UpdateList(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -149,9 +165,13 @@ func (h *CustomerListHandler) UpdateList(c *gin.Context) {
 // DeleteList deletes a list
 // DELETE /api/v1/customers/:id/lists/:listId
 func (h *CustomerListHandler) DeleteList(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -176,9 +196,13 @@ func (h *CustomerListHandler) DeleteList(c *gin.Context) {
 // AddItem adds an item to a list
 // POST /api/v1/customers/:id/lists/:listId/items
 func (h *CustomerListHandler) AddItem(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -225,9 +249,13 @@ func (h *CustomerListHandler) AddItem(c *gin.Context) {
 // RemoveItem removes an item from a list
 // DELETE /api/v1/customers/:id/lists/:listId/items/:itemId
 func (h *CustomerListHandler) RemoveItem(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -248,9 +276,13 @@ func (h *CustomerListHandler) RemoveItem(c *gin.Context) {
 // RemoveItemByProduct removes an item from a list by product ID
 // DELETE /api/v1/customers/:id/lists/:listId/products/:productId
 func (h *CustomerListHandler) RemoveItemByProduct(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -294,9 +326,13 @@ func (h *CustomerListHandler) RemoveItemByProduct(c *gin.Context) {
 // MoveItem moves an item to another list
 // POST /api/v1/customers/:id/lists/:listId/items/:itemId/move
 func (h *CustomerListHandler) MoveItem(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -325,9 +361,13 @@ func (h *CustomerListHandler) MoveItem(c *gin.Context) {
 // CheckProduct checks if a product is in any of the customer's lists
 // GET /api/v1/customers/:id/lists/check/:productId
 func (h *CustomerListHandler) CheckProduct(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -368,9 +408,13 @@ func (h *CustomerListHandler) CheckProduct(c *gin.Context) {
 // GetDefaultList returns the default list for a customer
 // GET /api/v1/customers/:id/lists/default
 func (h *CustomerListHandler) GetDefaultList(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 

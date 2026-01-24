@@ -1019,13 +1019,17 @@ func (h *StaffHandler) GetStaffTenantsInternal(c *gin.Context) {
 // This is an internal endpoint called by tenant-service for credential validation
 // GET /api/v1/internal/staff/by-email?email=xxx
 func (h *StaffHandler) GetStaffByEmailInternal(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
 			Error: models.Error{
 				Code:    "MISSING_TENANT",
-				Message: "X-Tenant-ID header is required",
+				Message: "tenant_id is required",
 			},
 		})
 		return
@@ -1077,13 +1081,17 @@ func (h *StaffHandler) GetStaffByEmailInternal(c *gin.Context) {
 // POST /api/v1/internal/staff/sync-keycloak-id
 // This is called after successful Keycloak login to ensure the keycloak_user_id matches
 func (h *StaffHandler) SyncKeycloakUserIDInternal(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 	if tenantID == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
 			Error: models.Error{
 				Code:    "MISSING_TENANT",
-				Message: "X-Tenant-ID header is required",
+				Message: "tenant_id is required",
 			},
 		})
 		return

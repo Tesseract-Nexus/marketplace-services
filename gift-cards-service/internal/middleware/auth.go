@@ -13,10 +13,16 @@ func DevelopmentAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var userID string
 
-		// First, try to get user ID from X-User-ID header (set by API gateway/proxy)
-		userID = c.GetHeader("X-User-ID")
+		// First, try to get user ID from context (set by IstioAuth)
+		userIDVal, _ := c.Get("user_id")
+		if userIDVal != nil {
+			userID = userIDVal.(string)
+		}
 		if userID == "" {
-			userID = c.GetHeader("X-Staff-ID")
+			staffIDVal, _ := c.Get("staff_id")
+			if staffIDVal != nil {
+				userID = staffIDVal.(string)
+			}
 		}
 
 		// If no header, try to extract from JWT token

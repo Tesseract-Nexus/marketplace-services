@@ -41,10 +41,14 @@ func NewCartHandlerWithValidation(db *gorm.DB, validationService *services.CartV
 // GetCart returns the cart for a customer
 func (h *CartHandler) GetCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -124,10 +128,14 @@ func (h *CartHandler) GetCart(c *gin.Context) {
 // ValidateCart forces a validation refresh and returns the result
 func (h *CartHandler) ValidateCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -162,10 +170,14 @@ func (h *CartHandler) ValidateCart(c *gin.Context) {
 // RemoveUnavailableItems removes all unavailable items from the cart
 func (h *CartHandler) RemoveUnavailableItems(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -239,10 +251,14 @@ func (h *CartHandler) RemoveUnavailableItems(c *gin.Context) {
 // AcceptPriceChanges accepts all price changes in the cart
 func (h *CartHandler) AcceptPriceChanges(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -299,10 +315,14 @@ func (h *CartHandler) AcceptPriceChanges(c *gin.Context) {
 // SyncCart syncs the entire cart (replaces all items)
 func (h *CartHandler) SyncCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -417,10 +437,14 @@ func (h *CartHandler) SyncCart(c *gin.Context) {
 // AddToCart adds an item to the cart
 func (h *CartHandler) AddToCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -543,10 +567,14 @@ func (h *CartHandler) AddToCart(c *gin.Context) {
 func (h *CartHandler) UpdateCartItem(c *gin.Context) {
 	customerID := c.Param("id")
 	itemID := c.Param("itemId")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -629,10 +657,14 @@ func (h *CartHandler) UpdateCartItem(c *gin.Context) {
 func (h *CartHandler) RemoveFromCart(c *gin.Context) {
 	customerID := c.Param("id")
 	itemID := c.Param("itemId")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -701,10 +733,14 @@ func (h *CartHandler) RemoveFromCart(c *gin.Context) {
 // ClearCart removes all items from the cart
 func (h *CartHandler) ClearCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -730,10 +766,14 @@ func (h *CartHandler) ClearCart(c *gin.Context) {
 
 // GetAbandonedCarts returns all carts that haven't been updated in 1+ hours (abandoned carts)
 func (h *CartHandler) GetAbandonedCarts(c *gin.Context) {
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -823,10 +863,14 @@ func parseMinutes(s string) (int, error) {
 // MergeCart merges a guest cart into the customer's cart
 func (h *CartHandler) MergeCart(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 

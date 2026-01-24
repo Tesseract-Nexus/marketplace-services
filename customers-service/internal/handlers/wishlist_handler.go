@@ -20,10 +20,14 @@ func NewWishlistHandler(db *gorm.DB) *WishlistHandler {
 // GetWishlist returns all wishlist items for a customer
 func (h *WishlistHandler) GetWishlist(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -50,10 +54,14 @@ func (h *WishlistHandler) GetWishlist(c *gin.Context) {
 // AddToWishlist adds an item to the wishlist
 func (h *WishlistHandler) AddToWishlist(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -110,10 +118,14 @@ func (h *WishlistHandler) AddToWishlist(c *gin.Context) {
 func (h *WishlistHandler) RemoveFromWishlist(c *gin.Context) {
 	customerID := c.Param("id")
 	productID := c.Param("productId")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -142,10 +154,14 @@ func (h *WishlistHandler) RemoveFromWishlist(c *gin.Context) {
 // SyncWishlist syncs the entire wishlist (replaces all items)
 func (h *WishlistHandler) SyncWishlist(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 
@@ -214,10 +230,14 @@ func (h *WishlistHandler) SyncWishlist(c *gin.Context) {
 // ClearWishlist removes all items from the wishlist
 func (h *WishlistHandler) ClearWishlist(c *gin.Context) {
 	customerID := c.Param("id")
-	tenantID := c.GetHeader("X-Tenant-ID")
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
+	}
 
 	if tenantID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Tenant-ID header is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
 		return
 	}
 

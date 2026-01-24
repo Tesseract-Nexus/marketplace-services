@@ -44,10 +44,13 @@ func (h *WebhookHandler) HandleRazorpayWebhook(c *gin.Context) {
 		return
 	}
 
-	// Get tenant ID - priority: query param > header > payload notes
+	// Get tenant ID - priority: query param > context (IstioAuth) > payload notes
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		tenantID = c.GetHeader("X-Tenant-ID")
+		tenantIDVal, _ := c.Get("tenant_id")
+		if tenantIDVal != nil {
+			tenantID = tenantIDVal.(string)
+		}
 	}
 
 	// If tenant ID not in query/header, extract from webhook payload notes
@@ -144,10 +147,13 @@ func (h *WebhookHandler) HandleStripeWebhook(c *gin.Context) {
 		return
 	}
 
-	// Get tenant ID - priority: query param > header > payload metadata
+	// Get tenant ID - priority: query param > context (IstioAuth) > payload metadata
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		tenantID = c.GetHeader("X-Tenant-ID")
+		tenantIDVal, _ := c.Get("tenant_id")
+		if tenantIDVal != nil {
+			tenantID = tenantIDVal.(string)
+		}
 	}
 
 	// If tenant ID not in query/header, extract from webhook payload metadata
