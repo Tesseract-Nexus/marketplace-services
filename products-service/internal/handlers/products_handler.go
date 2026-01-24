@@ -77,8 +77,8 @@ func (h *ProductsHandler) resolveSupplier(tenantID string, supplierID, supplierN
 
 // CreateProduct creates a new product
 func (h *ProductsHandler) CreateProduct(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 
 	var req models.CreateProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -212,8 +212,9 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 
 	// Publish product created event for audit trail
 	if h.eventsPublisher != nil {
-		userName, _ := c.Get("userName")
-		userEmail, _ := c.Get("userEmail")
+		// Use IstioAuth context keys: username, user_email
+		userName, _ := c.Get("username")
+		userEmail, _ := c.Get("user_email")
 		actorName := ""
 		actorEmail := ""
 		if userName != nil {
@@ -234,7 +235,7 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 
 // GetProducts retrieves products list with filtering and pagination
 func (h *ProductsHandler) GetProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	// Parse query parameters
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -310,7 +311,7 @@ func (h *ProductsHandler) GetProducts(c *gin.Context) {
 
 // GetProduct retrieves a single product by ID
 func (h *ProductsHandler) GetProduct(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -349,7 +350,7 @@ func (h *ProductsHandler) GetProduct(c *gin.Context) {
 // GET /api/v1/products/batch?ids=uuid1,uuid2,uuid3
 // Performance: Up to 50x faster than individual requests for bulk operations
 func (h *ProductsHandler) BatchGetProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	idsParam := c.Query("ids")
 	if idsParam == "" {
@@ -466,8 +467,8 @@ func (h *ProductsHandler) BatchGetProducts(c *gin.Context) {
 
 // UpdateProduct updates an existing product
 func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -663,8 +664,9 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 
 	// Publish product updated event for audit trail
 	if h.eventsPublisher != nil {
-		userName, _ := c.Get("userName")
-		userEmail, _ := c.Get("userEmail")
+		// Use IstioAuth context keys: username, user_email
+		userName, _ := c.Get("username")
+		userEmail, _ := c.Get("user_email")
 		actorName := ""
 		actorEmail := ""
 		if userName != nil {
@@ -697,7 +699,7 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 // DeleteProduct soft deletes a product with optional cascade delete
 // Query params: deleteVariants=true, deleteCategory=false, deleteWarehouse=false, deleteSupplier=false
 func (h *ProductsHandler) DeleteProduct(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -792,7 +794,7 @@ func (h *ProductsHandler) DeleteProduct(c *gin.Context) {
 
 // UpdateProductStatus updates product status
 func (h *ProductsHandler) UpdateProductStatus(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -838,7 +840,7 @@ func (h *ProductsHandler) UpdateProductStatus(c *gin.Context) {
 
 // BulkUpdateStatus updates status for multiple products
 func (h *ProductsHandler) BulkUpdateStatus(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.BulkUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -896,8 +898,8 @@ func (h *ProductsHandler) BulkUpdateStatus(c *gin.Context) {
 // BulkCreateProducts creates multiple products in a single request
 // POST /api/v1/products/bulk
 func (h *ProductsHandler) BulkCreateProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 
 	var req models.BulkCreateProductsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1107,7 +1109,7 @@ func (h *ProductsHandler) BulkCreateProducts(c *gin.Context) {
 // DELETE /api/v1/products/bulk
 // Body: { "ids": [...], "options": { "deleteVariants": true, ... } }
 func (h *ProductsHandler) BulkDeleteProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.BulkCascadeDeleteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1241,7 +1243,7 @@ func (h *ProductsHandler) BulkDeleteProducts(c *gin.Context) {
 
 // UpdateInventory updates product inventory
 func (h *ProductsHandler) UpdateInventory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -1287,7 +1289,7 @@ func (h *ProductsHandler) UpdateInventory(c *gin.Context) {
 
 // InventoryAdjustment adjusts product inventory
 func (h *ProductsHandler) InventoryAdjustment(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -1361,7 +1363,7 @@ func (h *ProductsHandler) InventoryAdjustment(c *gin.Context) {
 
 // BulkDeductInventory deducts inventory for multiple products
 func (h *ProductsHandler) BulkDeductInventory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.BulkInventoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1397,7 +1399,7 @@ func (h *ProductsHandler) BulkDeductInventory(c *gin.Context) {
 
 // BulkRestoreInventory restores inventory for multiple products
 func (h *ProductsHandler) BulkRestoreInventory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.BulkInventoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1433,7 +1435,7 @@ func (h *ProductsHandler) BulkRestoreInventory(c *gin.Context) {
 
 // CheckStock checks stock availability for multiple products
 func (h *ProductsHandler) CheckStock(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.StockCheckRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1484,7 +1486,7 @@ func (h *ProductsHandler) CheckStock(c *gin.Context) {
 
 // SearchProducts performs text search on products
 func (h *ProductsHandler) SearchProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.SearchProductsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1541,7 +1543,7 @@ func (h *ProductsHandler) SearchProducts(c *gin.Context) {
 
 // GetAnalytics retrieves product analytics
 func (h *ProductsHandler) GetAnalytics(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	overview, err := h.repo.GetProductsOverview(tenantID.(string))
 	if err != nil {
@@ -1571,7 +1573,7 @@ func (h *ProductsHandler) GetAnalytics(c *gin.Context) {
 
 // GetStats retrieves product statistics
 func (h *ProductsHandler) GetStats(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	overview, err := h.repo.GetProductsOverview(tenantID.(string))
 	if err != nil {
@@ -1605,9 +1607,11 @@ func (h *ProductsHandler) CreateVariant(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default-tenant"
+	// Use IstioAuth context key: tenant_id
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 
 	if err := h.repo.CreateProductVariant(tenantID, productID, &variant); err != nil {
@@ -1625,9 +1629,11 @@ func (h *ProductsHandler) GetVariants(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default-tenant"
+	// Use IstioAuth context key: tenant_id
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 
 	page := 1
@@ -1666,9 +1672,11 @@ func (h *ProductsHandler) UpdateVariant(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default-tenant"
+	// Use IstioAuth context key: tenant_id
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 
 	if err := h.repo.UpdateProductVariant(tenantID, variantID, &updates); err != nil {
@@ -1686,9 +1694,11 @@ func (h *ProductsHandler) DeleteVariant(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default-tenant"
+	// Use IstioAuth context key: tenant_id
+	tenantIDVal, _ := c.Get("tenant_id")
+	tenantID := ""
+	if tenantIDVal != nil {
+		tenantID = tenantIDVal.(string)
 	}
 
 	if err := h.repo.DeleteProductVariant(tenantID, variantID); err != nil {
@@ -1740,7 +1750,7 @@ func (h *ProductsHandler) GetProductsByCategory(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse
 // @Router /categories [get]
 func (h *ProductsHandler) GetCategories(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
@@ -1792,8 +1802,8 @@ func (h *ProductsHandler) GetCategories(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse
 // @Router /categories [post]
 func (h *ProductsHandler) CreateCategory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 
 	var req models.CreateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1903,7 +1913,7 @@ func (h *ProductsHandler) CreateCategory(c *gin.Context) {
 // @Failure 404 {object} models.ErrorResponse
 // @Router /categories/{id} [get]
 func (h *ProductsHandler) GetCategory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	categoryID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -1948,8 +1958,8 @@ func (h *ProductsHandler) GetCategory(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse
 // @Router /categories/{id} [put]
 func (h *ProductsHandler) UpdateCategory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 
 	categoryID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -2091,7 +2101,7 @@ func (h *ProductsHandler) UpdateCategory(c *gin.Context) {
 // @Failure 500 {object} models.ErrorResponse
 // @Router /categories/{id} [delete]
 func (h *ProductsHandler) DeleteCategory(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	categoryID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -2153,7 +2163,7 @@ func (h *ProductsHandler) DeleteCategory(c *gin.Context) {
 // BulkUpdateCategoryStatus updates isActive status for multiple categories
 // PATCH /api/v1/categories/bulk/status
 func (h *ProductsHandler) BulkUpdateCategoryStatus(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req struct {
 		IDs      []string `json:"ids" binding:"required,min=1"`
@@ -2216,7 +2226,7 @@ func (h *ProductsHandler) BulkUpdateCategoryStatus(c *gin.Context) {
 
 // GetSearchSuggestions returns autocomplete suggestions
 func (h *ProductsHandler) GetSearchSuggestions(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	query := c.Query("q")
 
 	if query == "" || len(query) < 2 {
@@ -2250,7 +2260,7 @@ func (h *ProductsHandler) GetSearchSuggestions(c *gin.Context) {
 
 // GetAvailableFilters returns available filter options
 func (h *ProductsHandler) GetAvailableFilters(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var categoryID *string
 	if catID := c.Query("categoryId"); catID != "" {
@@ -2278,7 +2288,7 @@ func (h *ProductsHandler) GetAvailableFilters(c *gin.Context) {
 
 // TrackSearch tracks a search query for analytics
 func (h *ProductsHandler) TrackSearch(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var analytics models.SearchAnalytics
 	if err := c.ShouldBindJSON(&analytics); err != nil {
@@ -2315,7 +2325,7 @@ func (h *ProductsHandler) TrackSearch(c *gin.Context) {
 
 // GetSearchAnalytics returns search analytics
 func (h *ProductsHandler) GetSearchAnalytics(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
 
 	analytics, err := h.repo.GetSearchAnalytics(tenantID.(string), days)
@@ -2344,7 +2354,7 @@ func (h *ProductsHandler) GetSearchAnalytics(c *gin.Context) {
 // ValidateCascadeDelete validates cascade delete options for a single product
 // POST /api/v1/products/:id/cascade/validate
 func (h *ProductsHandler) ValidateCascadeDelete(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	productIDStr := c.Param("id")
 
 	productID, err := uuid.Parse(productIDStr)
@@ -2386,7 +2396,7 @@ func (h *ProductsHandler) ValidateCascadeDelete(c *gin.Context) {
 // ValidateBulkCascadeDelete validates cascade delete options for multiple products
 // POST /api/v1/products/bulk/cascade/validate
 func (h *ProductsHandler) ValidateBulkCascadeDelete(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 
 	var req models.BulkCascadeDeleteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
