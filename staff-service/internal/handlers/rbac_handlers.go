@@ -1749,8 +1749,8 @@ func (h *RBACHandler) GetStaffEffectivePermissions(c *gin.Context) {
 			log.Printf("[GetStaffEffectivePermissions] Found staff by keycloak_user_id %s: %s", staffIDStr, staffID)
 		} else {
 			// Still not found - try to find by email from header
-			// This handles legacy systems using email-based auth
-			userEmail := c.GetHeader("X-User-Email")
+			// This handles email-based auth via Istio JWT claim
+			userEmail := c.GetHeader("x-jwt-claim-email")
 			if userEmail != "" {
 				staffByEmail, _ := h.staffRepo.GetByEmail(tenantID, userEmail)
 				if staffByEmail != nil {
