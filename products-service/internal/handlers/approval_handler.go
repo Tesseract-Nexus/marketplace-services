@@ -36,14 +36,15 @@ func NewApprovalProductsHandler(
 // BulkDeleteProductsWithApproval handles bulk delete with approval workflow
 // DELETE /api/v1/products/bulk
 func (h *ApprovalProductsHandler) BulkDeleteProductsWithApproval(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr := tenantID.(string)
-	userID, _ := c.Get("userId")
+	userID, _ := c.Get("user_id")
 	userIDStr := ""
 	if userID != nil {
 		userIDStr = userID.(string)
 	}
-	userName, _ := c.Get("userName")
+	// Use IstioAuth context key: username
+	userName, _ := c.Get("username")
 	userNameStr := "Unknown User"
 	if userName != nil {
 		userNameStr = userName.(string)
@@ -235,14 +236,15 @@ func (h *ApprovalProductsHandler) executeBulkDelete(c *gin.Context, tenantID str
 // UpdateProductPriceWithApproval handles price updates with approval workflow
 // PUT /api/v1/products/:id/price
 func (h *ApprovalProductsHandler) UpdateProductPriceWithApproval(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr := tenantID.(string)
-	userID, _ := c.Get("userId")
+	userID, _ := c.Get("user_id")
 	userIDStr := ""
 	if userID != nil {
 		userIDStr = userID.(string)
 	}
-	userName, _ := c.Get("userName")
+	// Use IstioAuth context key: username
+	userName, _ := c.Get("username")
 	userNameStr := "Unknown User"
 	if userName != nil {
 		userNameStr = userName.(string)
@@ -385,7 +387,7 @@ func (h *ApprovalProductsHandler) executePriceUpdate(c *gin.Context, tenantID st
 // HandleApprovalCallback handles callbacks from approval-service when approval is granted
 // POST /api/v1/products/approval-callback
 func (h *ApprovalProductsHandler) HandleApprovalCallback(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
+	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr := tenantID.(string)
 
 	var callback struct {

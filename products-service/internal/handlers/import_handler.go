@@ -178,9 +178,10 @@ func (h *ImportHandler) generateXLSXTemplate(c *gin.Context, template models.Imp
 // POST /api/v1/products/import
 // Supports large file imports with configurable batch sizes, retry logic, and partial commits
 func (h *ImportHandler) ImportProducts(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
-	userEmail, _ := c.Get("userEmail")
+	// Use IstioAuth context keys
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
+	userEmail, _ := c.Get("user_email")
 	startTime := time.Now()
 
 	// Get file from form

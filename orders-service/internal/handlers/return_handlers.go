@@ -240,7 +240,7 @@ func (h *ReturnHandlers) ApproveReturn(c *gin.Context) {
 	}
 
 	// Get user ID from context (would come from auth middleware)
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found"})
 		return
@@ -304,7 +304,7 @@ func (h *ReturnHandlers) RejectReturn(c *gin.Context) {
 	}
 
 	// Get user ID from context
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found"})
 		return
@@ -370,7 +370,7 @@ func (h *ReturnHandlers) MarkInTransit(c *gin.Context) {
 
 	// Get user ID from context (optional for customer-initiated updates)
 	var userID *uuid.UUID
-	if userIDStr, exists := c.Get("userId"); exists {
+	if userIDStr, exists := c.Get("user_id"); exists {
 		if parsedID, err := uuid.Parse(userIDStr.(string)); err == nil {
 			userID = &parsedID
 		}
@@ -420,7 +420,7 @@ func (h *ReturnHandlers) MarkReceived(c *gin.Context) {
 
 	// Get user ID from context
 	var userID *uuid.UUID
-	if userIDStr, exists := c.Get("userId"); exists {
+	if userIDStr, exists := c.Get("user_id"); exists {
 		if parsedID, err := uuid.Parse(userIDStr.(string)); err == nil {
 			userID = &parsedID
 		}
@@ -479,7 +479,7 @@ func (h *ReturnHandlers) InspectReturn(c *gin.Context) {
 	}
 
 	// Get user ID from context
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found"})
 		return
@@ -553,7 +553,7 @@ func (h *ReturnHandlers) CompleteReturn(c *gin.Context) {
 	}
 
 	// Get user ID from context
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found"})
 		return
@@ -616,7 +616,7 @@ func (h *ReturnHandlers) CancelReturn(c *gin.Context) {
 
 	// Get user ID from context (optional)
 	var userID *uuid.UUID
-	if userIDStr, exists := c.Get("userId"); exists {
+	if userIDStr, exists := c.Get("user_id"); exists {
 		if parsedID, err := uuid.Parse(userIDStr.(string)); err == nil {
 			userID = &parsedID
 		}

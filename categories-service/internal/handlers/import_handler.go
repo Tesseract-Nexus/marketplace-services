@@ -243,8 +243,9 @@ func (h *ImportHandler) generateXLSXTemplate(c *gin.Context, template ImportTemp
 // ImportCategories imports categories from CSV or Excel file
 // POST /api/v1/categories/import
 func (h *ImportHandler) ImportCategories(c *gin.Context) {
-	tenantID, _ := c.Get("tenantId")
-	userID, _ := c.Get("userId")
+	// Use IstioAuth context keys
+	tenantID, _ := c.Get("tenant_id")
+	userID, _ := c.Get("user_id")
 
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
