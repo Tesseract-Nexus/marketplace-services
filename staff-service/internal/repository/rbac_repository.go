@@ -184,7 +184,8 @@ func (r *rbacRepository) ListDepartments(tenantID string, vendorID *string, page
 	var depts []models.Department
 	var total int64
 
-	query := r.db.Model(&models.Department{}).Where("tenant_id = ?", tenantID)
+	// Explicitly filter soft-deleted departments
+	query := r.db.Model(&models.Department{}).Where("tenant_id = ? AND deleted_at IS NULL", tenantID)
 	query = r.applyVendorFilter(query, vendorID)
 
 	if err := query.Count(&total).Error; err != nil {
@@ -234,7 +235,8 @@ func (r *rbacRepository) ListDepartments(tenantID string, vendorID *string, page
 func (r *rbacRepository) GetDepartmentHierarchy(tenantID string, vendorID *string) ([]models.DepartmentHierarchy, error) {
 	var rootDepts []models.Department
 
-	query := r.db.Where("tenant_id = ? AND parent_department_id IS NULL", tenantID)
+	// Explicitly filter soft-deleted departments
+	query := r.db.Where("tenant_id = ? AND parent_department_id IS NULL AND deleted_at IS NULL", tenantID)
 	query = r.applyVendorFilter(query, vendorID)
 
 	if err := query.
@@ -257,9 +259,9 @@ func (r *rbacRepository) buildDepartmentHierarchy(tenantID string, vendorID *str
 		Department: dept,
 	}
 
-	// Get sub-departments
+	// Get sub-departments (explicitly filter soft-deleted)
 	var subDepts []models.Department
-	query := r.db.Where("tenant_id = ? AND parent_department_id = ?", tenantID, dept.ID)
+	query := r.db.Where("tenant_id = ? AND parent_department_id = ? AND deleted_at IS NULL", tenantID, dept.ID)
 	query = r.applyVendorFilter(query, vendorID)
 	query.Preload("DepartmentHead").Order("name ASC").Find(&subDepts)
 
@@ -268,10 +270,10 @@ func (r *rbacRepository) buildDepartmentHierarchy(tenantID string, vendorID *str
 		hierarchy.SubDepartments[i] = r.buildDepartmentHierarchy(tenantID, vendorID, subDept)
 	}
 
-	// Get teams
-	teamQuery := r.db.Where("tenant_id = ? AND department_id = ?", tenantID, dept.ID)
+	// Get teams (explicitly filter soft-deleted)
+	teamQuery := r.db.Where("tenant_id = ? AND department_id = ? AND deleted_at IS NULL", tenantID, dept.ID)
 	teamQuery = r.applyVendorFilter(teamQuery, vendorID)
-	teamQuery.Preload("TeamLead").Order("name ASC").Find(&hierarchy.Teams)
+	teamQuery.Preload("TeamLead").Preload("DefaultRole").Order("name ASC").Find(&hierarchy.Teams)
 
 	return hierarchy
 }
@@ -347,7 +349,8 @@ func (r *rbacRepository) ListTeams(tenantID string, vendorID *string, department
 	var teams []models.Team
 	var total int64
 
-	query := r.db.Model(&models.Team{}).Where("tenant_id = ?", tenantID)
+	// Explicitly filter soft-deleted teams
+	query := r.db.Model(&models.Team{}).Where("tenant_id = ? AND deleted_at IS NULL", tenantID)
 	query = r.applyVendorFilter(query, vendorID)
 
 	if departmentID != nil {
@@ -401,7 +404,8 @@ func (r *rbacRepository) ListTeams(tenantID string, vendorID *string, department
 
 func (r *rbacRepository) GetTeamsByDepartment(tenantID string, vendorID *string, departmentID uuid.UUID) ([]models.Team, error) {
 	var teams []models.Team
-	query := r.db.Where("tenant_id = ? AND department_id = ?", tenantID, departmentID)
+	// Explicitly filter soft-deleted teams
+	query := r.db.Where("tenant_id = ? AND department_id = ? AND deleted_at IS NULL", tenantID, departmentID)
 	query = r.applyVendorFilter(query, vendorID)
 
 	err := query.
