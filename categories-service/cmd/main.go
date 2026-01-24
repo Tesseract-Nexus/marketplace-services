@@ -172,7 +172,8 @@ func main() {
 			categories.POST("/import", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesCreate), importHandler.ImportCategories)
 			categories.POST("/export", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesRead), categoryHandler.ExportCategories)
 
-			// Approval callback (internal service-to-service)
+			// Approval endpoints
+			categories.POST("/:id/submit-for-approval", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesUpdate), approvalCallbackHandler.SubmitCategoryForApproval)
 			categories.POST("/approval-callback", approvalCallbackHandler.HandleApprovalCallback)
 		}
 	}

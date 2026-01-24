@@ -44,7 +44,7 @@ type ApprovalClient struct {
 func NewApprovalClient() *ApprovalClient {
 	baseURL := os.Getenv("APPROVAL_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://approval-service:8080"
+		baseURL = "http://approval-service:8099"
 	}
 
 	return &ApprovalClient{

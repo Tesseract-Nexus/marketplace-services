@@ -231,7 +231,8 @@ func main() {
 			products.POST("/:id/cascade/validate", rbacMw.RequirePermission(rbac.PermissionProductsDelete), productsHandler.ValidateCascadeDelete)
 			products.POST("/bulk/cascade/validate", rbacMw.RequirePermission(rbac.PermissionProductsDelete), productsHandler.ValidateBulkCascadeDelete)
 
-			// Approval callback endpoint
+			// Approval endpoints
+			products.POST("/:id/submit-for-approval", rbacMw.RequirePermission(rbac.PermissionProductsUpdate), approvalProductsHandler.SubmitProductForApproval)
 			products.POST("/approval-callback", approvalProductsHandler.HandleApprovalCallback)
 
 			// Inventory operations - require inventory:update permission

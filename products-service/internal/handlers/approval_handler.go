@@ -528,6 +528,98 @@ func (h *ApprovalProductsHandler) executeApprovedPriceChange(c *gin.Context, ten
 	h.executePriceUpdate(c, tenantID, productID, newPriceStr)
 }
 
+// SubmitProductForApproval submits an existing draft product for approval
+// POST /api/v1/products/:id/submit-for-approval
+func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr := tenantID.(string)
+	userID, _ := c.Get("user_id")
+	userIDStr := ""
+	if userID != nil {
+		userIDStr = userID.(string)
+	}
+	userName, _ := c.Get("username")
+	userNameStr := ""
+	if userName != nil {
+		userNameStr = userName.(string)
+	}
+
+	productIDStr := c.Param("id")
+	productID, err := uuid.Parse(productIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_ID",
+				Message: "Invalid product ID format",
+			},
+		})
+		return
+	}
+
+	// Get the product
+	product, err := h.repo.GetProductByID(tenantIDStr, productID, false)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "NOT_FOUND",
+				Message: "Product not found",
+			},
+		})
+		return
+	}
+
+	// Check if product is in draft status
+	if product.Status != models.ProductStatusDraft {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_STATUS",
+				Message: "Only draft products can be submitted for approval",
+			},
+		})
+		return
+	}
+
+	// Create approval request
+	approvalResp, err := h.approvalClient.CreateProductApprovalRequest(
+		tenantIDStr,
+		userIDStr,
+		userNameStr,
+		product.ID.String(),
+		product.Name,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "APPROVAL_SERVICE_ERROR",
+				Message: "Failed to create approval request: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	if approvalResp.Success && approvalResp.Data != nil {
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":     true,
+			"message":     "Product submitted for approval",
+			"approval_id": approvalResp.Data.ID,
+			"status":      "pending_approval",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+		Success: false,
+		Error: models.Error{
+			Code:    "APPROVAL_FAILED",
+			Message: "Failed to create approval request",
+		},
+	})
+}
+
 // executeApprovedProductPublish executes an approved product publication (DRAFT -> ACTIVE)
 func (h *ApprovalProductsHandler) executeApprovedProductPublish(c *gin.Context, tenantID string, actionData map[string]any) {
 	productIDStr, ok := actionData["product_id"].(string)

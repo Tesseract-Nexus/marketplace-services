@@ -13,12 +13,96 @@ import (
 
 // ApprovalCallbackHandler handles callbacks from approval-service
 type ApprovalCallbackHandler struct {
-	repo *repository.CategoryRepository
+	repo           *repository.CategoryRepository
+	approvalClient *clients.ApprovalClient
 }
 
 // NewApprovalCallbackHandler creates a new approval callback handler
 func NewApprovalCallbackHandler(repo *repository.CategoryRepository) *ApprovalCallbackHandler {
-	return &ApprovalCallbackHandler{repo: repo}
+	return &ApprovalCallbackHandler{
+		repo:           repo,
+		approvalClient: clients.NewApprovalClient(),
+	}
+}
+
+// SubmitCategoryForApproval submits an existing draft category for approval
+// POST /api/v1/categories/:id/submit-for-approval
+func (h *ApprovalCallbackHandler) SubmitCategoryForApproval(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "TENANT_REQUIRED",
+				"message": "Tenant context is required",
+			},
+		})
+		return
+	}
+
+	userID := c.GetString("user_id")
+	categoryIDStr := c.Param("id")
+
+	// Get the category
+	category, err := h.repo.GetByID(tenantID, categoryIDStr)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "NOT_FOUND",
+				"message": "Category not found",
+			},
+		})
+		return
+	}
+
+	// Check if category is in draft status
+	if category.Status != models.StatusDraft {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_STATUS",
+				"message": "Only draft categories can be submitted for approval",
+			},
+		})
+		return
+	}
+
+	// Create approval request
+	approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
+		tenantID,
+		userID,
+		category.ID.String(),
+		category.Name,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "APPROVAL_SERVICE_ERROR",
+				"message": "Failed to create approval request: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	if approvalResp.Success && approvalResp.Data != nil {
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":     true,
+			"message":     "Category submitted for approval",
+			"approval_id": approvalResp.Data.ID,
+			"status":      "pending_approval",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"success": false,
+		"error": gin.H{
+			"code":    "APPROVAL_FAILED",
+			"message": "Failed to create approval request",
+		},
+	})
 }
 
 // HandleApprovalCallback handles callbacks from approval-service when approval is granted
