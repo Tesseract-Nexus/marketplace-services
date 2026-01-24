@@ -6,18 +6,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TenantMiddleware extracts tenant ID from headers
+// TenantMiddleware extracts tenant ID from Istio JWT claim headers
 // SECURITY: No default tenant fallback - requests without tenant context are rejected
 // Hierarchy: Tenant -> Vendor -> Staff
-// NOTE: First checks if tenant_id was already set by IstioAuth middleware
+// NOTE: First checks if tenant_id was already set by auth middleware
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// First, check if tenant_id was already set by IstioAuth middleware
+		// First, check if tenant_id was already set by auth middleware
 		tenantID := c.GetString("tenant_id")
 
-		// If not set by IstioAuth, get tenant ID from X-Tenant-ID header
+		// Fallback to Istio JWT claim header (set by Istio RequestAuthentication)
 		if tenantID == "" {
-			tenantID = c.GetHeader("X-Tenant-ID")
+			tenantID = c.GetHeader("x-jwt-claim-tenant-id")
 		}
 
 		// SECURITY: No default fallback - fail closed
@@ -26,7 +26,7 @@ func TenantMiddleware() gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "TENANT_REQUIRED",
-					"message": "Tenant ID is required. Include X-Tenant-ID header.",
+					"message": "Tenant ID is required. Ensure x-jwt-claim-tenant-id header is set.",
 				},
 			})
 			c.Abort()
@@ -39,12 +39,17 @@ func TenantMiddleware() gin.HandlerFunc {
 	}
 }
 
-// VendorMiddleware extracts vendor ID from headers for marketplace isolation
+// VendorMiddleware extracts vendor ID from Istio JWT claim headers for marketplace isolation
 // This is optional - used for Tenant -> Vendor -> Staff hierarchy
 func VendorMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Get vendor ID from X-Vendor-ID header (optional)
-		vendorID := c.GetHeader("X-Vendor-ID")
+		// Check if vendor_id was already set by auth middleware
+		vendorID := c.GetString("vendor_id")
+
+		// Fallback to Istio JWT claim header (set by Istio RequestAuthentication)
+		if vendorID == "" {
+			vendorID = c.GetHeader("x-jwt-claim-vendor-id")
+		}
 
 		// Set vendor ID in context if provided
 		if vendorID != "" {

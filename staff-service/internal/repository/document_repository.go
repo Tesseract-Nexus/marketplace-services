@@ -89,10 +89,17 @@ func (r *documentRepository) UpdateDocument(tenantID string, vendorID *string, i
 func (r *documentRepository) DeleteDocument(tenantID string, vendorID *string, id uuid.UUID, deletedBy string) error {
 	query := r.db.Model(&models.StaffDocument{}).Where("tenant_id = ? AND id = ?", tenantID, id)
 	query = r.applyVendorFilter(query, vendorID)
-	return query.Updates(map[string]interface{}{
+	result := query.Updates(map[string]interface{}{
 		"deleted_at": time.Now(),
 		"updated_by": deletedBy,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *documentRepository) ListDocumentsByStaff(tenantID string, vendorID *string, staffID uuid.UUID) ([]models.StaffDocument, error) {

@@ -74,18 +74,17 @@ func (h *RBACHandler) invalidateTenantCache(tenantID string) {
 
 // Helper functions
 func (h *RBACHandler) getTenantAndVendor(c *gin.Context) (string, *string) {
-	// Get tenant_id from IstioAuth context (set by middleware)
-	tenantIDVal, _ := c.Get("tenant_id")
-	tenantID := ""
-	if tenantIDVal != nil {
-		tenantID = tenantIDVal.(string)
+	// Try context first (set by middleware for authenticated routes)
+	tenantID := c.GetString("tenant_id")
+	// Fallback to Istio JWT claim header (set by Istio RequestAuthentication)
+	if tenantID == "" {
+		tenantID = c.GetHeader("x-jwt-claim-tenant-id")
 	}
 
-	// Get vendor_id from IstioAuth context
-	vendorIDVal, _ := c.Get("vendor_id")
-	vendorID := ""
-	if vendorIDVal != nil {
-		vendorID = vendorIDVal.(string)
+	vendorID := c.GetString("vendor_id")
+	// Fallback to Istio JWT claim header for vendor
+	if vendorID == "" {
+		vendorID = c.GetHeader("x-jwt-claim-vendor-id")
 	}
 	if vendorID == "" {
 		return tenantID, nil

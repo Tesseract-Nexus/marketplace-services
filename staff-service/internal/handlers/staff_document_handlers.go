@@ -22,8 +22,18 @@ func NewStaffDocumentHandler(repo repository.DocumentRepository, staffRepo repos
 
 // Helper functions
 func (h *StaffDocumentHandler) getTenantAndVendor(c *gin.Context) (string, *string) {
+	// Try context first (set by middleware for authenticated routes)
 	tenantID := c.GetString("tenant_id")
+	// Fallback to Istio JWT claim header (set by Istio RequestAuthentication)
+	if tenantID == "" {
+		tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+	}
+
 	vendorID := c.GetString("vendor_id")
+	// Fallback to Istio JWT claim header for vendor
+	if vendorID == "" {
+		vendorID = c.GetHeader("x-jwt-claim-vendor-id")
+	}
 	if vendorID == "" {
 		return tenantID, nil
 	}

@@ -119,10 +119,17 @@ func (r *rbacRepository) UpdateDepartment(tenantID string, vendorID *string, id 
 func (r *rbacRepository) DeleteDepartment(tenantID string, vendorID *string, id uuid.UUID, deletedBy string) error {
 	query := r.db.Model(&models.Department{}).Where("tenant_id = ? AND id = ?", tenantID, id)
 	query = r.applyVendorFilter(query, vendorID)
-	return query.Updates(map[string]interface{}{
+	result := query.Updates(map[string]interface{}{
 		"deleted_at": time.Now(),
 		"updated_by": deletedBy,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // WouldCreateDepartmentCycle checks if setting newParentID as the parent of departmentID would create a cycle
@@ -311,12 +318,29 @@ func (r *rbacRepository) UpdateTeam(tenantID string, vendorID *string, id uuid.U
 }
 
 func (r *rbacRepository) DeleteTeam(tenantID string, vendorID *string, id uuid.UUID, deletedBy string) error {
+	// Debug: Log the parameters being used for delete
+	vendorStr := "nil"
+	if vendorID != nil {
+		vendorStr = *vendorID
+	}
+	fmt.Printf("[DeleteTeam] tenantID=%s, vendorID=%s, teamID=%s, deletedBy=%s\n", tenantID, vendorStr, id.String(), deletedBy)
+
 	query := r.db.Model(&models.Team{}).Where("tenant_id = ? AND id = ?", tenantID, id)
 	query = r.applyVendorFilter(query, vendorID)
-	return query.Updates(map[string]interface{}{
+	result := query.Updates(map[string]interface{}{
 		"deleted_at": time.Now(),
 		"updated_by": deletedBy,
-	}).Error
+	})
+
+	fmt.Printf("[DeleteTeam] RowsAffected=%d, Error=%v\n", result.RowsAffected, result.Error)
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *rbacRepository) ListTeams(tenantID string, vendorID *string, departmentID *uuid.UUID, page, limit int) ([]models.Team, *models.PaginationInfo, error) {
@@ -475,10 +499,17 @@ func (r *rbacRepository) DeleteRole(tenantID string, vendorID *string, id uuid.U
 
 	query := r.db.Model(&models.Role{}).Where("tenant_id = ? AND id = ?", tenantID, id)
 	query = r.applyVendorFilter(query, vendorID)
-	return query.Updates(map[string]interface{}{
+	result := query.Updates(map[string]interface{}{
 		"deleted_at": time.Now(),
 		"updated_by": deletedBy,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *rbacRepository) ListRoles(tenantID string, vendorID *string, page, limit int) ([]models.Role, *models.PaginationInfo, error) {
