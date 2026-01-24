@@ -18,6 +18,7 @@ import (
 type ProductsHandler struct {
 	repo            *repository.ProductsRepository
 	inventoryClient *clients.InventoryClient
+	approvalClient  *clients.ApprovalClient
 	eventsPublisher *events.Publisher
 }
 
@@ -25,6 +26,7 @@ func NewProductsHandler(repo *repository.ProductsRepository, eventsPublisher *ev
 	return &ProductsHandler{
 		repo:            repo,
 		inventoryClient: clients.NewInventoryClient(),
+		approvalClient:  clients.NewApprovalClient(),
 		eventsPublisher: eventsPublisher,
 	}
 }
@@ -226,11 +228,48 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 		_ = h.eventsPublisher.PublishProductCreated(c.Request.Context(), product, tenantID.(string), userID.(string), actorName, actorEmail)
 	}
 
-	c.JSON(http.StatusCreated, models.ProductResponse{
+	// Create approval request for product publication
+	var approvalID *string
+	if h.approvalClient != nil {
+		userName, _ := c.Get("username")
+		actorName := ""
+		if userName != nil {
+			actorName = userName.(string)
+		}
+		approvalResp, err := h.approvalClient.CreateProductApprovalRequest(
+			tenantID.(string),
+			userID.(string),
+			actorName,
+			product.ID.String(),
+			product.Name,
+		)
+		if err == nil && approvalResp != nil && approvalResp.Data != nil {
+			approvalID = &approvalResp.Data.ID
+		}
+		// Log error but don't fail product creation if approval service is unavailable
+		if err != nil {
+			fmt.Printf("Warning: Failed to create approval request for product %s: %v\n", product.ID.String(), err)
+		}
+	}
+
+	response := models.ProductResponse{
 		Success: true,
 		Data:    product,
-		Message: stringPtr("Product created successfully"),
-	})
+		Message: stringPtr("Product created successfully in draft status. Approval request submitted for publication."),
+	}
+
+	// Include approval ID in response if available
+	if approvalID != nil {
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":    true,
+			"data":       product,
+			"message":    "Product created in draft status. Pending approval for publication.",
+			"approvalId": *approvalID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 // GetProducts retrieves products list with filtering and pagination

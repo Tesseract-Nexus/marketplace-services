@@ -13,8 +13,10 @@ import (
 type ApprovalType string
 
 const (
-	ApprovalTypeBulkDelete  ApprovalType = "bulk_product_delete"
-	ApprovalTypePriceChange ApprovalType = "product_price_change"
+	ApprovalTypeBulkDelete     ApprovalType = "bulk_product_delete"
+	ApprovalTypePriceChange    ApprovalType = "product_price_change"
+	ApprovalTypeProductCreate  ApprovalType = "product_creation"
+	ApprovalTypeCategoryCreate ApprovalType = "category_creation"
 )
 
 // RequiredPriority levels based on checklist thresholds
@@ -27,6 +29,9 @@ const (
 	PriorityPriceChangeManager = 30 // Manager level (20-50% decrease)
 	PriorityPriceChangeAdmin   = 40 // Admin level (>50% decrease)
 	PriorityPriceChangeOwner   = 50 // Owner level (set to $0)
+
+	// Product/Category Creation: Always requires manager approval
+	PriorityCreationManager = 30 // Manager level for all creations
 )
 
 // ApprovalClient provides methods to interact with the approval-service
@@ -69,15 +74,16 @@ type CheckApprovalResponse struct {
 
 // CreateApprovalRequest is the request body for creating approvals
 type CreateApprovalRequest struct {
-	ActionType       ApprovalType   `json:"action_type"`
-	ResourceType     string         `json:"resource_type"`
-	ResourceID       string         `json:"resource_id"`
-	ResourceRef      string         `json:"resource_reference"`
-	RequestedByID    string         `json:"requested_by_id"`
-	RequestedByName  string         `json:"requested_by_name"`
-	RequiredPriority int            `json:"required_priority"`
-	Reason           string         `json:"reason"`
-	ActionData       map[string]any `json:"action_data,omitempty"`
+	WorkflowName     string         `json:"workflowName"`
+	ActionType       string         `json:"actionType"`
+	ResourceType     string         `json:"resourceType,omitempty"`
+	ResourceID       string         `json:"resourceId,omitempty"`
+	ResourceRef      string         `json:"resource_reference,omitempty"`
+	RequestedByID    string         `json:"requested_by_id,omitempty"`
+	RequestedByName  string         `json:"requested_by_name,omitempty"`
+	RequiredPriority int            `json:"required_priority,omitempty"`
+	Reason           string         `json:"reason,omitempty"`
+	ActionData       map[string]any `json:"actionData,omitempty"`
 	ExecutionID      string         `json:"execution_id,omitempty"`
 }
 
@@ -107,7 +113,7 @@ func (c *ApprovalClient) CheckApproval(req *CheckApprovalRequest, tenantID strin
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("X-Tenant-ID", tenantID)
+	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -136,7 +142,7 @@ func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, t
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("X-Tenant-ID", tenantID)
+	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -197,4 +203,42 @@ func DeterminePriceChangePriority(oldPrice, newPrice float64) (bool, int, string
 		// Admin required
 		return true, PriorityPriceChangeAdmin, fmt.Sprintf("Price decrease of %.1f%% requires admin approval", decreasePercent)
 	}
+}
+
+// CreateProductApprovalRequest creates an approval request for product creation/publication
+func (c *ApprovalClient) CreateProductApprovalRequest(tenantID, userID, userName, productID, productName string) (*ApprovalRequestResponse, error) {
+	req := &CreateApprovalRequest{
+		WorkflowName:    "product_creation",
+		ActionType:      string(ApprovalTypeProductCreate),
+		ResourceType:    "product",
+		ResourceID:      productID,
+		RequestedByID:   userID,
+		RequestedByName: userName,
+		Reason:          fmt.Sprintf("Request to publish product: %s", productName),
+		ActionData: map[string]any{
+			"product_id":   productID,
+			"product_name": productName,
+			"action":       "publish",
+		},
+	}
+	return c.CreateApprovalRequestCall(req, tenantID)
+}
+
+// CreateCategoryApprovalRequest creates an approval request for category creation/publication
+func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, userName, categoryID, categoryName string) (*ApprovalRequestResponse, error) {
+	req := &CreateApprovalRequest{
+		WorkflowName:    "category_creation",
+		ActionType:      string(ApprovalTypeCategoryCreate),
+		ResourceType:    "category",
+		ResourceID:      categoryID,
+		RequestedByID:   userID,
+		RequestedByName: userName,
+		Reason:          fmt.Sprintf("Request to publish category: %s", categoryName),
+		ActionData: map[string]any{
+			"category_id":   categoryID,
+			"category_name": categoryName,
+			"action":        "publish",
+		},
+	}
+	return c.CreateApprovalRequestCall(req, tenantID)
 }

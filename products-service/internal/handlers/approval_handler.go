@@ -102,7 +102,8 @@ func (h *ApprovalProductsHandler) BulkDeleteProductsWithApproval(c *gin.Context)
 	if h.approvalEnabled && requiresApproval {
 		// Create approval request
 		approvalReq := &clients.CreateApprovalRequest{
-			ActionType:       clients.ApprovalTypeBulkDelete,
+			WorkflowName:     "bulk_product_delete",
+			ActionType:       string(clients.ApprovalTypeBulkDelete),
 			ResourceType:     "products",
 			ResourceID:       "bulk",
 			ResourceRef:      fmt.Sprintf("Bulk delete of %d products", itemCount),
@@ -302,7 +303,8 @@ func (h *ApprovalProductsHandler) UpdateProductPriceWithApproval(c *gin.Context)
 	if h.approvalEnabled && requiresApproval {
 		// Create approval request
 		approvalReq := &clients.CreateApprovalRequest{
-			ActionType:       clients.ApprovalTypePriceChange,
+			WorkflowName:     "product_price_change",
+			ActionType:       string(clients.ApprovalTypePriceChange),
 			ResourceType:     "product",
 			ResourceID:       productIDStr,
 			ResourceRef:      fmt.Sprintf("Price change for %s", product.Name),
@@ -423,6 +425,8 @@ func (h *ApprovalProductsHandler) HandleApprovalCallback(c *gin.Context) {
 		h.executeApprovedBulkDelete(c, tenantIDStr, callback.ActionData)
 	case string(clients.ApprovalTypePriceChange):
 		h.executeApprovedPriceChange(c, tenantIDStr, callback.ActionData)
+	case string(clients.ApprovalTypeProductCreate):
+		h.executeApprovedProductPublish(c, tenantIDStr, callback.ActionData)
 	default:
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
@@ -522,4 +526,52 @@ func (h *ApprovalProductsHandler) executeApprovedPriceChange(c *gin.Context, ten
 	}
 
 	h.executePriceUpdate(c, tenantID, productID, newPriceStr)
+}
+
+// executeApprovedProductPublish executes an approved product publication (DRAFT -> ACTIVE)
+func (h *ApprovalProductsHandler) executeApprovedProductPublish(c *gin.Context, tenantID string, actionData map[string]any) {
+	productIDStr, ok := actionData["product_id"].(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_DATA",
+				Message: "Invalid product_id in action data",
+			},
+		})
+		return
+	}
+
+	productID, err := uuid.Parse(productIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_ID",
+				Message: "Invalid product ID format",
+			},
+		})
+		return
+	}
+
+	// Update product status to ACTIVE
+	if err := h.repo.UpdateProductStatus(tenantID, productID, models.ProductStatusActive, nil); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "UPDATE_FAILED",
+				Message: "Failed to update product status: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	// Get updated product
+	product, _ := h.repo.GetProductByID(tenantID, productID, false)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Product published successfully",
+		"data":    product,
+	})
 }

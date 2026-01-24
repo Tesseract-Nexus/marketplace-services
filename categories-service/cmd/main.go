@@ -103,6 +103,7 @@ func main() {
 	// Initialize handlers
 	categoryHandler := handlers.NewCategoryHandler(categoryRepo)
 	importHandler := handlers.NewImportHandler(categoryRepo)
+	approvalCallbackHandler := handlers.NewApprovalCallbackHandler(categoryRepo)
 
 	// Initialize Gin router
 	if cfg.Environment == "production" {
@@ -170,6 +171,9 @@ func main() {
 			categories.GET("/import/template", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesRead), importHandler.GetImportTemplate)
 			categories.POST("/import", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesCreate), importHandler.ImportCategories)
 			categories.POST("/export", rbacMiddleware.RequirePermission(rbac.PermissionCategoriesRead), categoryHandler.ExportCategories)
+
+			// Approval callback (internal service-to-service)
+			categories.POST("/approval-callback", approvalCallbackHandler.HandleApprovalCallback)
 		}
 	}
 

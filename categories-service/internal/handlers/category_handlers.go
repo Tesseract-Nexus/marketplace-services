@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"categories-service/internal/clients"
 	"categories-service/internal/models"
 	"categories-service/internal/repository"
 	"errors"
@@ -14,11 +15,15 @@ import (
 )
 
 type CategoryHandler struct {
-	repo *repository.CategoryRepository
+	repo           *repository.CategoryRepository
+	approvalClient *clients.ApprovalClient
 }
 
 func NewCategoryHandler(repo *repository.CategoryRepository) *CategoryHandler {
-	return &CategoryHandler{repo: repo}
+	return &CategoryHandler{
+		repo:           repo,
+		approvalClient: clients.NewApprovalClient(),
+	}
 }
 
 // getTenantID extracts tenant ID from context - fails if not present
@@ -84,6 +89,36 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 
 	if err := h.repo.Create(&req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
+		return
+	}
+
+	// Create approval request for category publication
+	var approvalID *string
+	if h.approvalClient != nil {
+		userID := c.GetString("user_id")
+		approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
+			tenantID,
+			userID,
+			req.ID.String(),
+			req.Name,
+		)
+		if err == nil && approvalResp != nil && approvalResp.Data != nil {
+			approvalID = &approvalResp.Data.ID
+		}
+		// Log error but don't fail category creation if approval service is unavailable
+		if err != nil {
+			fmt.Printf("Warning: Failed to create approval request for category %s: %v\n", req.ID.String(), err)
+		}
+	}
+
+	// Include approval ID in response if available
+	if approvalID != nil {
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":    true,
+			"data":       req,
+			"message":    "Category created in draft status. Pending approval for publication.",
+			"approvalId": *approvalID,
+		})
 		return
 	}
 
