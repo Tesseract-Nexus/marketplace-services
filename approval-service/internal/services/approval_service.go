@@ -773,11 +773,12 @@ func extractDefaultRole(workflow *models.ApprovalWorkflow) string {
 
 func isRoleHigherOrEqual(role, requiredRole string) bool {
 	priority := map[string]int{
-		"viewer":  10,
-		"member":  20,
-		"manager": 30,
-		"admin":   40,
-		"owner":   50,
+		"viewer":      10,
+		"member":      20,
+		"manager":     30,
+		"admin":       40,
+		"owner":       50,
+		"super_admin": 100,
 	}
 	return priority[role] >= priority[requiredRole]
 }
