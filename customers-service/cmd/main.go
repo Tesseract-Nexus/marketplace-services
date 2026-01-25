@@ -122,6 +122,15 @@ func main() {
 		log.Println("✓ Product event subscriber initialized")
 	}
 
+	// Initialize verification event subscriber for email verification
+	// This listens for verification.verified events and sends welcome emails
+	verificationSubscriber, err := events.NewVerificationEventSubscriber(customerService)
+	if err != nil {
+		log.Printf("WARNING: Failed to initialize verification event subscriber: %v (welcome emails on verification disabled)", err)
+	} else {
+		log.Println("✓ Verification event subscriber initialized")
+	}
+
 	// Initialize OpenTelemetry tracing
 	var tracerProvider *tracing.TracerProvider
 	var tracerErr error
@@ -379,13 +388,23 @@ func main() {
 	cartValidationWorker.Start()
 	log.Println("✓ Background workers started")
 
-	// Start event subscriber
+	// Start event subscribers
 	if productSubscriber != nil {
 		ctx := context.Background()
 		if err := productSubscriber.Start(ctx); err != nil {
 			log.Printf("WARNING: Failed to start product event subscriber: %v", err)
 		} else {
 			log.Println("✓ Product event subscriber started")
+		}
+	}
+
+	// Start verification event subscriber for email verification + welcome emails
+	if verificationSubscriber != nil {
+		ctx := context.Background()
+		if err := verificationSubscriber.Start(ctx); err != nil {
+			log.Printf("WARNING: Failed to start verification event subscriber: %v", err)
+		} else {
+			log.Println("✓ Verification event subscriber started (listening for email verifications)")
 		}
 	}
 

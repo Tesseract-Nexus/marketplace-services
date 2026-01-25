@@ -92,8 +92,10 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, req CreateCustomer
 		return nil, fmt.Errorf("failed to create customer: %w", err)
 	}
 
-	// Send welcome email notification (non-blocking)
-	if s.notificationClient != nil {
+	// Send welcome email notification ONLY after email is verified
+	// Welcome email is triggered by verification-service after successful OTP verification
+	// This ensures customers receive welcome email only when their email is confirmed
+	if s.notificationClient != nil && customer.EmailVerified {
 		go func() {
 			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -432,4 +434,52 @@ func (s *CustomerService) VerifyEmail(ctx context.Context, token string) (*model
 // GetCustomerByEmail retrieves a customer by email
 func (s *CustomerService) GetCustomerByEmail(ctx context.Context, tenantID, email string) (*models.Customer, error) {
 	return s.repo.GetByEmail(ctx, tenantID, email)
+}
+
+// VerifyEmailByAddress marks a customer's email as verified using their email address
+// This is used by the OTP verification flow where verification happens externally
+// and we just need to mark the customer as verified and send the welcome email
+func (s *CustomerService) VerifyEmailByAddress(ctx context.Context, tenantID, email string) (*models.Customer, error) {
+	customer, err := s.repo.GetByEmail(ctx, tenantID, email)
+	if err != nil {
+		return nil, fmt.Errorf("customer not found: %w", err)
+	}
+
+	// Already verified, return early
+	if customer.EmailVerified {
+		log.Printf("[CustomerService] Customer %s email already verified", email)
+		return customer, nil
+	}
+
+	// Mark email as verified
+	if err := s.repo.MarkEmailVerified(ctx, customer.ID); err != nil {
+		return nil, fmt.Errorf("failed to verify email: %w", err)
+	}
+
+	// Update local copy
+	customer.EmailVerified = true
+	customer.VerificationToken = ""
+	customer.VerificationTokenExpiresAt = nil
+
+	log.Printf("[CustomerService] Email verified for customer %s via OTP", email)
+
+	// Send welcome email notification after email verification (non-blocking)
+	// This is the only place welcome emails are sent - after email is verified
+	if s.notificationClient != nil {
+		go func() {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			notification := clients.BuildFromCustomer(customer)
+			notification.StorefrontURL = s.tenantClient.BuildStorefrontURL(notifyCtx, customer.TenantID)
+
+			if err := s.notificationClient.SendCustomerWelcomeNotification(notifyCtx, notification); err != nil {
+				log.Printf("[CustomerService] Failed to send welcome notification: %v", err)
+			} else {
+				log.Printf("[CustomerService] Welcome email sent to %s after email verification", email)
+			}
+		}()
+	}
+
+	return customer, nil
 }
