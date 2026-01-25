@@ -30,7 +30,7 @@ type ApprovalRepositoryInterface interface {
 	// Request methods
 	CreateRequest(ctx context.Context, request *models.ApprovalRequest) error
 	GetRequestByID(ctx context.Context, id uuid.UUID) (*models.ApprovalRequest, error)
-	ListPendingRequests(ctx context.Context, tenantID string, approverRole string, limit, offset int) ([]models.ApprovalRequest, int64, error)
+	ListPendingRequests(ctx context.Context, tenantID string, approverRole string, statusFilter string, limit, offset int) ([]models.ApprovalRequest, int64, error)
 	ListRequestsByRequester(ctx context.Context, tenantID string, requesterID uuid.UUID, limit, offset int) ([]models.ApprovalRequest, int64, error)
 	UpdateRequestStatus(ctx context.Context, request *models.ApprovalRequest, newStatus string) error
 

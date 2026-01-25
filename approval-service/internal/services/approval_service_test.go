@@ -70,8 +70,8 @@ func (m *MockApprovalRepository) GetRequestByID(ctx context.Context, id uuid.UUI
 	return args.Get(0).(*models.ApprovalRequest), args.Error(1)
 }
 
-func (m *MockApprovalRepository) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
-	args := m.Called(ctx, tenantID, approverRole, limit, offset)
+func (m *MockApprovalRepository) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, statusFilter string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
+	args := m.Called(ctx, tenantID, approverRole, statusFilter, limit, offset)
 	return args.Get(0).([]models.ApprovalRequest), args.Get(1).(int64), args.Error(2)
 }
 
@@ -610,6 +610,7 @@ func TestListPendingRequests_Success(t *testing.T) {
 	ctx := context.Background()
 	tenantID := "tenant-123"
 	approverRole := "manager"
+	statusFilter := "pending"
 
 	mockRepo := new(MockApprovalRepository)
 	service := &ApprovalService{repo: mockRepo}
@@ -619,10 +620,10 @@ func TestListPendingRequests_Success(t *testing.T) {
 		*createTestRequest(tenantID, uuid.New(), uuid.New()),
 	}
 
-	mockRepo.On("ListPendingRequests", ctx, tenantID, approverRole, 20, 0).
+	mockRepo.On("ListPendingRequests", ctx, tenantID, approverRole, statusFilter, 20, 0).
 		Return(requests, int64(2), nil)
 
-	result, total, err := service.ListPendingRequests(ctx, tenantID, approverRole, 20, 0)
+	result, total, err := service.ListPendingRequests(ctx, tenantID, approverRole, statusFilter, 20, 0)
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
