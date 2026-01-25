@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +19,7 @@ import (
 	"categories-service/internal/handlers"
 	"categories-service/internal/middleware"
 	"categories-service/internal/repository"
+	"categories-service/internal/subscribers"
 
 	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
@@ -93,7 +96,6 @@ func main() {
 	if err != nil {
 		log.Printf("WARNING: Failed to initialize events publisher: %v (events won't be published)", err)
 	} else {
-		defer eventsPublisher.Close()
 		log.Println("✓ NATS events publisher initialized")
 	}
 
@@ -104,6 +106,25 @@ func main() {
 	categoryHandler := handlers.NewCategoryHandler(categoryRepo, eventsPublisher)
 	importHandler := handlers.NewImportHandler(categoryRepo)
 	approvalCallbackHandler := handlers.NewApprovalCallbackHandler(categoryRepo)
+
+	// Initialize and start approval subscriber for NATS events
+	natsURL := os.Getenv("NATS_URL")
+	var approvalSubscriber *subscribers.ApprovalSubscriber
+	if natsURL != "" {
+		var err error
+		approvalSubscriber, err = subscribers.NewApprovalSubscriber(categoryRepo, eventLogger)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize approval subscriber: %v (continuing without approval events)", err)
+		} else {
+			// Start the approval subscriber in a goroutine
+			go func() {
+				if err := approvalSubscriber.Start(context.Background()); err != nil {
+					log.Printf("WARNING: Approval subscriber error: %v", err)
+				}
+			}()
+			log.Println("✓ Approval subscriber initialized (listening for approval.granted events)")
+		}
+	}
 
 	// Initialize Gin router
 	if cfg.Environment == "production" {
@@ -199,8 +220,32 @@ func main() {
 		port = "8083"
 	}
 
-	log.Printf("Categories service starting on port %s", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+	// Graceful shutdown handling
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Categories service starting on port %s", port)
+		if err := router.Run(":" + port); err != nil {
+			log.Fatal("Failed to start server:", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	<-quit
+	log.Println("Shutting down categories-service...")
+
+	// Stop approval subscriber
+	if approvalSubscriber != nil {
+		approvalSubscriber.Stop()
+		log.Println("✓ Approval subscriber stopped")
 	}
+
+	// Close events publisher
+	if eventsPublisher != nil {
+		eventsPublisher.Close()
+		log.Println("✓ Events publisher closed")
+	}
+
+	log.Println("Categories service stopped")
 }

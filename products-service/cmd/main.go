@@ -20,6 +20,7 @@ import (
 	"products-service/internal/handlers"
 	"products-service/internal/middleware"
 	"products-service/internal/repository"
+	"products-service/internal/subscribers"
 
 	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
@@ -127,6 +128,24 @@ func main() {
 	importHandler := handlers.NewImportHandler(productsRepo, inventoryClient, categoriesClient, vendorClient)
 	approvalProductsHandler := handlers.NewApprovalProductsHandler(productsRepo, approvalClient)
 	log.Println("✓ Approval handler initialized")
+
+	// Initialize and start approval subscriber for NATS events
+	var approvalSubscriber *subscribers.ApprovalSubscriber
+	if natsURL != "" {
+		var err error
+		approvalSubscriber, err = subscribers.NewApprovalSubscriber(productsRepo, logger)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize approval subscriber: %v (continuing without approval events)", err)
+		} else {
+			// Start the approval subscriber in a goroutine
+			go func() {
+				if err := approvalSubscriber.Start(context.Background()); err != nil {
+					log.Printf("WARNING: Approval subscriber error: %v", err)
+				}
+			}()
+			log.Println("✓ Approval subscriber initialized (listening for approval.granted events)")
+		}
+	}
 
 	// Initialize OpenTelemetry tracing
 	var tracerProvider *tracing.TracerProvider
@@ -309,6 +328,12 @@ func main() {
 	// Wait for interrupt signal
 	<-quit
 	log.Println("Shutting down products-service...")
+
+	// Stop approval subscriber
+	if approvalSubscriber != nil {
+		approvalSubscriber.Stop()
+		log.Println("✓ Approval subscriber stopped")
+	}
 
 	// Shutdown tracer provider
 	if tracerProvider != nil {
