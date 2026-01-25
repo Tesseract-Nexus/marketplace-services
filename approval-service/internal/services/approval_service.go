@@ -61,7 +61,7 @@ type CreateRequestInput struct {
 	ActionType      string                 `json:"actionType"`
 	ActionData      map[string]interface{} `json:"actionData"`
 	ResourceType    string                 `json:"resourceType,omitempty"`
-	ResourceID      *uuid.UUID             `json:"resourceId,omitempty"`
+	ResourceID      string                 `json:"resourceId,omitempty"` // String to allow JSON binding, parsed to UUID in service
 	Reason          string                 `json:"reason,omitempty"`
 	Priority        string                 `json:"priority,omitempty"`
 	RequesterName   string                 `json:"requesterName,omitempty"`
@@ -127,6 +127,14 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 	// Generate execution ID for idempotency
 	executionID := uuid.New()
 
+	// Parse ResourceID from string to UUID if provided
+	var resourceID *uuid.UUID
+	if input.ResourceID != "" {
+		if parsed, err := uuid.Parse(input.ResourceID); err == nil {
+			resourceID = &parsed
+		}
+	}
+
 	request := &models.ApprovalRequest{
 		TenantID:            tenantID,
 		WorkflowID:          workflow.ID,
@@ -136,7 +144,7 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 		ActionType:          input.ActionType,
 		ActionData:          datatypes.JSON(actionDataJSON),
 		ResourceType:        input.ResourceType,
-		ResourceID:          input.ResourceID,
+		ResourceID:          resourceID,
 		Reason:              input.Reason,
 		Priority:            priority,
 		CurrentApproverRole: result.RequiredRole,
