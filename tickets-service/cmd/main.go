@@ -79,8 +79,8 @@ func main() {
 	// Initialize repository
 	ticketsRepo := repository.NewTicketsRepository(db)
 
-	// Initialize handlers
-	ticketsHandler := handlers.NewTicketsHandler(ticketsRepo, notificationClient, tenantClient)
+	// Initialize handlers with events publisher for audit logging
+	ticketsHandler := handlers.NewTicketsHandler(ticketsRepo, notificationClient, tenantClient, eventsPublisher)
 	documentHandler := handlers.NewDocumentHandler(cfg.DocumentServiceURL, cfg.ProductID)
 
 	// Initialize Gin router

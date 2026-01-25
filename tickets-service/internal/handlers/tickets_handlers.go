@@ -10,21 +10,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"tickets-service/internal/clients"
+	"tickets-service/internal/events"
 	"tickets-service/internal/models"
 	"tickets-service/internal/repository"
+
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 )
 
 type TicketsHandler struct {
 	repo               *repository.TicketsRepository
 	notificationClient *clients.NotificationClient
 	tenantClient       *clients.TenantClient
+	eventsPublisher    *events.Publisher
 }
 
-func NewTicketsHandler(repo *repository.TicketsRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient) *TicketsHandler {
+func NewTicketsHandler(repo *repository.TicketsRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient, eventsPublisher *events.Publisher) *TicketsHandler {
 	return &TicketsHandler{
 		repo:               repo,
 		notificationClient: notificationClient,
 		tenantClient:       tenantClient,
+		eventsPublisher:    eventsPublisher,
 	}
 }
 
@@ -83,6 +88,31 @@ func (h *TicketsHandler) CreateTicket(c *gin.Context) {
 			},
 		})
 		return
+	}
+
+	// Publish event for audit trail
+	if h.eventsPublisher != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		category := ""
+		if ticket.Type != "" {
+			category = string(ticket.Type)
+		}
+		_ = h.eventsPublisher.PublishTicketCreated(
+			c.Request.Context(),
+			tenantID,
+			ticket.ID.String(),
+			ticket.TicketNumber,
+			ticket.CreatedByEmail,
+			ticket.CreatedByName,
+			ticket.Title,
+			category,
+			string(ticket.Priority),
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
+		)
 	}
 
 	// Send email notifications (non-blocking)
@@ -346,6 +376,25 @@ func (h *TicketsHandler) UpdateTicket(c *gin.Context) {
 		return
 	}
 
+	// Publish event for audit trail
+	if h.eventsPublisher != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishTicketUpdated(
+			c.Request.Context(),
+			tenantID,
+			updatedTicket.ID.String(),
+			updatedTicket.TicketNumber,
+			updatedTicket.CreatedByEmail,
+			updatedTicket.Title,
+			string(updatedTicket.Status),
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
+		)
+	}
+
 	c.JSON(http.StatusOK, models.TicketResponse{
 		Success: true,
 		Data:    updatedTicket,
@@ -354,7 +403,82 @@ func (h *TicketsHandler) UpdateTicket(c *gin.Context) {
 
 // DeleteTicket deletes a ticket
 func (h *TicketsHandler) DeleteTicket(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented yet"})
+	tenantID := c.GetString("tenantId")
+	userID := c.GetString("userId")
+	userRole := c.GetString("userRole")
+	ticketIDStr := c.Param("id")
+
+	ticketID, err := uuid.Parse(ticketIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_ID",
+				Message: "Invalid ticket ID format",
+			},
+		})
+		return
+	}
+
+	// Get existing ticket to check permissions and for audit
+	existingTicket, err := h.repo.GetTicketByID(tenantID, ticketID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "NOT_FOUND",
+				Message: "Ticket not found",
+			},
+		})
+		return
+	}
+
+	// Only admin/staff can delete tickets
+	if !isAdminRole(userRole) {
+		if existingTicket.CreatedBy != userID {
+			c.JSON(http.StatusForbidden, models.ErrorResponse{
+				Success: false,
+				Error: models.Error{
+					Code:    "FORBIDDEN",
+					Message: "You don't have permission to delete this ticket",
+				},
+			})
+			return
+		}
+	}
+
+	if err := h.repo.DeleteTicket(tenantID, ticketID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "DELETE_FAILED",
+				Message: "Failed to delete ticket",
+			},
+		})
+		return
+	}
+
+	// Publish event for audit trail
+	if h.eventsPublisher != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishTicketDeleted(
+			c.Request.Context(),
+			tenantID,
+			existingTicket.ID.String(),
+			existingTicket.TicketNumber,
+			existingTicket.Title,
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
+		)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Ticket deleted successfully",
+	})
 }
 
 // UpdateTicketStatus updates the status of a ticket
@@ -499,6 +623,26 @@ func (h *TicketsHandler) UpdateTicketStatus(c *gin.Context) {
 		}()
 	}
 
+	// Publish event for audit trail
+	if h.eventsPublisher != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishTicketStatusChanged(
+			c.Request.Context(),
+			tenantID,
+			updatedTicket.ID.String(),
+			updatedTicket.TicketNumber,
+			updatedTicket.CreatedByEmail,
+			updatedTicket.Title,
+			string(existingTicket.Status),
+			string(updatedTicket.Status),
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
+		)
+	}
+
 	c.JSON(http.StatusOK, models.TicketResponse{
 		Success: true,
 		Data:    updatedTicket,
@@ -598,6 +742,25 @@ func (h *TicketsHandler) AddComment(c *gin.Context) {
 			},
 		})
 		return
+	}
+
+	// Publish event for audit trail
+	if h.eventsPublisher != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishTicketCommentAdded(
+			c.Request.Context(),
+			tenantID,
+			updatedTicket.ID.String(),
+			updatedTicket.TicketNumber,
+			updatedTicket.Title,
+			req.Content,
+			req.IsInternal,
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
+		)
 	}
 
 	c.JSON(http.StatusCreated, models.TicketResponse{
