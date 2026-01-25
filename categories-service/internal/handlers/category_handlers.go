@@ -119,6 +119,8 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 			actor.ActorID,
 			actor.ActorName,
 			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
 		)
 	}
 
@@ -380,6 +382,8 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 			actor.ActorID,
 			actor.ActorName,
 			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
 		)
 	}
 
@@ -425,6 +429,8 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 			actor.ActorID,
 			actor.ActorName,
 			actor.ActorEmail,
+			actor.ClientIP,
+			actor.UserAgent,
 		)
 	}
 

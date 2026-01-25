@@ -217,7 +217,7 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 	// Publish product created event for audit trail
 	if h.eventsPublisher != nil {
 		actor := gosharedmw.GetActorInfo(c)
-		_ = h.eventsPublisher.PublishProductCreated(c.Request.Context(), product, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail)
+		_ = h.eventsPublisher.PublishProductCreated(c.Request.Context(), product, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail, actor.ClientIP, actor.UserAgent)
 	}
 
 	// Create approval request for product publication
@@ -707,7 +707,7 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 		if req.Description != nil {
 			changedFields = append(changedFields, "description")
 		}
-		_ = h.eventsPublisher.PublishProductUpdated(c.Request.Context(), product, nil, changedFields, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail)
+		_ = h.eventsPublisher.PublishProductUpdated(c.Request.Context(), product, nil, changedFields, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail, actor.ClientIP, actor.UserAgent)
 	}
 
 	c.JSON(http.StatusOK, models.ProductResponse{
@@ -742,6 +742,9 @@ func (h *ProductsHandler) DeleteProduct(c *gin.Context) {
 		DeleteWarehouse: c.DefaultQuery("deleteWarehouse", "false") == "true",
 		DeleteSupplier:  c.DefaultQuery("deleteSupplier", "false") == "true",
 	}
+
+	// Get the product before deletion for audit trail
+	productForAudit, _ := h.repo.GetProductByID(tenantID.(string), productID, false)
 
 	// Get related entities before deletion for cross-service cascade
 	related, err := h.repo.GetProductRelatedEntities(tenantID.(string), []uuid.UUID{productID})
@@ -809,6 +812,12 @@ func (h *ProductsHandler) DeleteProduct(c *gin.Context) {
 	}
 
 	result.PartialSuccess = len(result.Errors) > 0
+
+	// Publish product deleted event for audit trail
+	if h.eventsPublisher != nil && productForAudit != nil {
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishProductDeleted(c.Request.Context(), productForAudit, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail, actor.ClientIP, actor.UserAgent)
+	}
 
 	c.JSON(http.StatusOK, result)
 }

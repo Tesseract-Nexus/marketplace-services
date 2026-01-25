@@ -55,21 +55,25 @@ func (p *Publisher) Close() {
 }
 
 // PublishProductCreated publishes a product.created event
-func (p *Publisher) PublishProductCreated(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductCreated(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent(events.ProductCreated, product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "created"
 	return p.publish(ctx, event)
 }
 
 // PublishProductUpdated publishes a product.updated event
-func (p *Publisher) PublishProductUpdated(ctx context.Context, product *models.Product, oldProduct *models.Product, changedFields []string, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductUpdated(ctx context.Context, product *models.Product, oldProduct *models.Product, changedFields []string, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent(events.ProductUpdated, product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "updated"
 	event.ChangedFields = changedFields
 
@@ -103,41 +107,49 @@ func (p *Publisher) PublishProductUpdated(ctx context.Context, product *models.P
 }
 
 // PublishProductDeleted publishes a product.deleted event
-func (p *Publisher) PublishProductDeleted(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductDeleted(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent(events.ProductDeleted, product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "deleted"
 	return p.publish(ctx, event)
 }
 
 // PublishProductPublished publishes a product.published event
-func (p *Publisher) PublishProductPublished(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductPublished(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent(events.ProductPublished, product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "published"
 	return p.publish(ctx, event)
 }
 
 // PublishProductArchived publishes a product.archived event
-func (p *Publisher) PublishProductArchived(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductArchived(ctx context.Context, product *models.Product, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent(events.ProductArchived, product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "archived"
 	return p.publish(ctx, event)
 }
 
 // PublishProductStatusChanged publishes a product status change event
-func (p *Publisher) PublishProductStatusChanged(ctx context.Context, product *models.Product, oldStatus, newStatus string, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductStatusChanged(ctx context.Context, product *models.Product, oldStatus, newStatus string, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent("product.status_changed", product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "status_changed"
 	event.OldValue = map[string]interface{}{"status": oldStatus}
 	event.NewValue = map[string]interface{}{"status": newStatus}
@@ -146,11 +158,13 @@ func (p *Publisher) PublishProductStatusChanged(ctx context.Context, product *mo
 }
 
 // PublishProductPriceChanged publishes a product price change event
-func (p *Publisher) PublishProductPriceChanged(ctx context.Context, product *models.Product, oldPrice, newPrice float64, tenantID, actorID, actorName, actorEmail string) error {
+func (p *Publisher) PublishProductPriceChanged(ctx context.Context, product *models.Product, oldPrice, newPrice float64, tenantID, actorID, actorName, actorEmail, clientIP, userAgent string) error {
 	event := p.buildProductEvent("product.price_changed", product, tenantID)
 	event.ActorID = actorID
 	event.ActorName = actorName
 	event.ActorEmail = actorEmail
+	event.ClientIP = clientIP
+	event.UserAgent = userAgent
 	event.ChangeType = "price_changed"
 	event.OldValue = map[string]interface{}{"price": oldPrice}
 	event.NewValue = map[string]interface{}{"price": newPrice}
