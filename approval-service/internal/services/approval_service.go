@@ -186,9 +186,19 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 		return nil, ErrRequestAlreadyDecided
 	}
 
-	// Check self-approval
+	// Check self-approval based on workflow configuration
 	if request.RequesterID == approverID {
-		return nil, ErrSelfApprovalNotAllowed
+		// Check if workflow allows self-approval
+		requireDifferentUser := true // Default to requiring different user
+		if request.Workflow != nil {
+			var approverConfig models.ApproverConfig
+			if err := json.Unmarshal(request.Workflow.ApproverConfig, &approverConfig); err == nil {
+				requireDifferentUser = approverConfig.RequireDifferentUser
+			}
+		}
+		if requireDifferentUser {
+			return nil, ErrSelfApprovalNotAllowed
+		}
 	}
 
 	// Check if approver has required role or delegation
