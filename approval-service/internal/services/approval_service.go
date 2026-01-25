@@ -642,9 +642,12 @@ func roleToPriority(role string) int {
 	priorities := map[string]int{
 		"viewer":      10,
 		"member":      20,
+		"employee":    25,
+		"staff":       25,
 		"manager":     30,
 		"admin":       40,
 		"owner":       50,
+		"store_owner": 60,
 		"super_admin": 100,
 	}
 	if p, ok := priorities[role]; ok {
@@ -775,9 +778,12 @@ func isRoleHigherOrEqual(role, requiredRole string) bool {
 	priority := map[string]int{
 		"viewer":      10,
 		"member":      20,
+		"employee":    25,
+		"staff":       25,
 		"manager":     30,
 		"admin":       40,
 		"owner":       50,
+		"store_owner": 60,
 		"super_admin": 100,
 	}
 	return priority[role] >= priority[requiredRole]
