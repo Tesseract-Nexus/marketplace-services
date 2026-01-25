@@ -63,6 +63,7 @@ const (
 	StatusPending             = "pending"
 	StatusApproved            = "approved"
 	StatusRejected            = "rejected"
+	StatusRequestChanges      = "request_changes" // Needs review - changes requested by approver
 	StatusCancelled           = "cancelled"
 	StatusExpired             = "expired"
 	StatusEmergencyExecuted   = "emergency_executed"
