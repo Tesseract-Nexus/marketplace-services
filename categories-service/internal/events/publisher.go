@@ -27,6 +27,7 @@ type CategoryEvent struct {
 	Status       string                 `json:"status,omitempty"`
 	ActorID      string                 `json:"actorId,omitempty"`
 	ActorName    string                 `json:"actorName,omitempty"`
+	ActorEmail   string                 `json:"actorEmail,omitempty"`
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -71,7 +72,7 @@ func NewPublisher(logger *logrus.Logger) (*Publisher, error) {
 }
 
 // PublishCategoryCreated publishes a category created event
-func (p *Publisher) PublishCategoryCreated(ctx context.Context, tenantID, categoryID, categoryName, parentID, slug, description, actorID, actorName string) error {
+func (p *Publisher) PublishCategoryCreated(ctx context.Context, tenantID, categoryID, categoryName, parentID, slug, description, actorID, actorName, actorEmail string) error {
 	event := &CategoryEvent{
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryCreated,
@@ -86,13 +87,14 @@ func (p *Publisher) PublishCategoryCreated(ctx context.Context, tenantID, catego
 		Status:       "ACTIVE",
 		ActorID:      actorID,
 		ActorName:    actorName,
+		ActorEmail:   actorEmail,
 	}
 
 	return p.publisher.Publish(ctx, event)
 }
 
 // PublishCategoryUpdated publishes a category updated event
-func (p *Publisher) PublishCategoryUpdated(ctx context.Context, tenantID, categoryID, categoryName, parentID, slug, description, actorID, actorName string) error {
+func (p *Publisher) PublishCategoryUpdated(ctx context.Context, tenantID, categoryID, categoryName, parentID, slug, description, actorID, actorName, actorEmail string) error {
 	event := &CategoryEvent{
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryUpdated,
@@ -106,13 +108,14 @@ func (p *Publisher) PublishCategoryUpdated(ctx context.Context, tenantID, catego
 		Description:  description,
 		ActorID:      actorID,
 		ActorName:    actorName,
+		ActorEmail:   actorEmail,
 	}
 
 	return p.publisher.Publish(ctx, event)
 }
 
 // PublishCategoryDeleted publishes a category deleted event
-func (p *Publisher) PublishCategoryDeleted(ctx context.Context, tenantID, categoryID, categoryName, actorID, actorName string) error {
+func (p *Publisher) PublishCategoryDeleted(ctx context.Context, tenantID, categoryID, categoryName, actorID, actorName, actorEmail string) error {
 	event := &CategoryEvent{
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryDeleted,
@@ -124,6 +127,7 @@ func (p *Publisher) PublishCategoryDeleted(ctx context.Context, tenantID, catego
 		Status:       "DELETED",
 		ActorID:      actorID,
 		ActorName:    actorName,
+		ActorEmail:   actorEmail,
 	}
 
 	return p.publisher.Publish(ctx, event)

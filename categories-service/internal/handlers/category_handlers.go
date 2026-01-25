@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"categories-service/internal/clients"
+	"categories-service/internal/events"
 	"categories-service/internal/models"
 	"categories-service/internal/repository"
 	"errors"
@@ -15,14 +16,16 @@ import (
 )
 
 type CategoryHandler struct {
-	repo           *repository.CategoryRepository
-	approvalClient *clients.ApprovalClient
+	repo            *repository.CategoryRepository
+	approvalClient  *clients.ApprovalClient
+	eventsPublisher *events.Publisher
 }
 
-func NewCategoryHandler(repo *repository.CategoryRepository) *CategoryHandler {
+func NewCategoryHandler(repo *repository.CategoryRepository, eventsPublisher *events.Publisher) *CategoryHandler {
 	return &CategoryHandler{
-		repo:           repo,
-		approvalClient: clients.NewApprovalClient(),
+		repo:            repo,
+		approvalClient:  clients.NewApprovalClient(),
+		eventsPublisher: eventsPublisher,
 	}
 }
 
@@ -90,6 +93,45 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	if err := h.repo.Create(&req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
 		return
+	}
+
+	// Publish category created event for audit trail
+	if h.eventsPublisher != nil {
+		// Extract user info from Istio Auth context
+		userName, _ := c.Get("username")
+		userEmail, _ := c.Get("user_email")
+		actorName := ""
+		actorEmail := ""
+		if userName != nil {
+			actorName = userName.(string)
+		}
+		if userEmail != nil {
+			actorEmail = userEmail.(string)
+		}
+		// Fallback to user_id if username not available
+		if actorName == "" {
+			actorName = c.GetString("user_id")
+		}
+		parentID := ""
+		if req.ParentID != nil {
+			parentID = *req.ParentID
+		}
+		description := ""
+		if req.Description != nil {
+			description = *req.Description
+		}
+		_ = h.eventsPublisher.PublishCategoryCreated(
+			c.Request.Context(),
+			tenantID,
+			req.ID.String(),
+			req.Name,
+			parentID,
+			req.Slug,
+			description,
+			c.GetString("user_id"),
+			actorName,
+			actorEmail,
+		)
 	}
 
 	// Create approval request for category publication
@@ -328,6 +370,43 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		return
 	}
 
+	// Publish category updated event for audit trail
+	if h.eventsPublisher != nil {
+		userName, _ := c.Get("username")
+		userEmail, _ := c.Get("user_email")
+		actorName := ""
+		actorEmail := ""
+		if userName != nil {
+			actorName = userName.(string)
+		}
+		if userEmail != nil {
+			actorEmail = userEmail.(string)
+		}
+		if actorName == "" {
+			actorName = c.GetString("user_id")
+		}
+		parentID := ""
+		if category.ParentID != nil {
+			parentID = *category.ParentID
+		}
+		description := ""
+		if category.Description != nil {
+			description = *category.Description
+		}
+		_ = h.eventsPublisher.PublishCategoryUpdated(
+			c.Request.Context(),
+			tenantID,
+			category.ID.String(),
+			category.Name,
+			parentID,
+			category.Slug,
+			description,
+			c.GetString("user_id"),
+			actorName,
+			actorEmail,
+		)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": category})
 }
 
@@ -340,6 +419,10 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 	}
 
 	id := c.Param("id")
+
+	// Get category details before deletion for audit
+	category, _ := h.repo.GetByID(tenantID, id)
+
 	if err := h.repo.Delete(tenantID, id); err != nil {
 		if errors.Is(err, repository.ErrCategoryNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -354,6 +437,33 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete category"})
 		return
 	}
+
+	// Publish category deleted event for audit trail
+	if h.eventsPublisher != nil && category != nil {
+		userName, _ := c.Get("username")
+		userEmail, _ := c.Get("user_email")
+		actorName := ""
+		actorEmail := ""
+		if userName != nil {
+			actorName = userName.(string)
+		}
+		if userEmail != nil {
+			actorEmail = userEmail.(string)
+		}
+		if actorName == "" {
+			actorName = c.GetString("user_id")
+		}
+		_ = h.eventsPublisher.PublishCategoryDeleted(
+			c.Request.Context(),
+			tenantID,
+			category.ID.String(),
+			category.Name,
+			c.GetString("user_id"),
+			actorName,
+			actorEmail,
+		)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Category deleted"})
 }
 

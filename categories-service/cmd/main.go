@@ -101,7 +101,7 @@ func main() {
 	categoryRepo := repository.NewCategoryRepository(db, redisClient)
 
 	// Initialize handlers
-	categoryHandler := handlers.NewCategoryHandler(categoryRepo)
+	categoryHandler := handlers.NewCategoryHandler(categoryRepo, eventsPublisher)
 	importHandler := handlers.NewImportHandler(categoryRepo)
 	approvalCallbackHandler := handlers.NewApprovalCallbackHandler(categoryRepo)
 
