@@ -118,7 +118,7 @@ func (h *ApprovalProductsHandler) BulkDeleteProductsWithApproval(c *gin.Context)
 			},
 		}
 
-		approvalResp, err := h.approvalClient.CreateApprovalRequestCall(approvalReq, tenantIDStr)
+		approvalResp, err := h.approvalClient.CreateApprovalRequestCall(approvalReq, tenantIDStr, userIDStr)
 		if err != nil {
 			// Log error but continue with direct execution if approval service is unavailable
 			// In production, you might want to fail here instead
@@ -322,7 +322,7 @@ func (h *ApprovalProductsHandler) UpdateProductPriceWithApproval(c *gin.Context)
 			},
 		}
 
-		approvalResp, err := h.approvalClient.CreateApprovalRequestCall(approvalReq, tenantIDStr)
+		approvalResp, err := h.approvalClient.CreateApprovalRequestCall(approvalReq, tenantIDStr, userIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Success: false,
