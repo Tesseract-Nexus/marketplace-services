@@ -3,7 +3,7 @@ module categories-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.2.1
+	github.com/Tesseract-Nexus/go-shared v0.2.2-0.20260125021328-b7009c7f4cbf
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.6.0

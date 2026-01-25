@@ -13,6 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 )
 
 type CategoryHandler struct {
@@ -97,21 +99,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 
 	// Publish category created event for audit trail
 	if h.eventsPublisher != nil {
-		// Extract user info from Istio Auth context
-		userName, _ := c.Get("username")
-		userEmail, _ := c.Get("user_email")
-		actorName := ""
-		actorEmail := ""
-		if userName != nil {
-			actorName = userName.(string)
-		}
-		if userEmail != nil {
-			actorEmail = userEmail.(string)
-		}
-		// Fallback: use email if username not available (avoid using UUID as display name)
-		if actorName == "" && actorEmail != "" {
-			actorName = actorEmail
-		}
+		actor := gosharedmw.GetActorInfo(c)
 		parentID := ""
 		if req.ParentID != nil {
 			parentID = req.ParentID.String()
@@ -128,9 +116,9 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 			parentID,
 			req.Slug,
 			description,
-			c.GetString("user_id"),
-			actorName,
-			actorEmail,
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
 		)
 	}
 
@@ -372,19 +360,7 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 
 	// Publish category updated event for audit trail
 	if h.eventsPublisher != nil {
-		userName, _ := c.Get("username")
-		userEmail, _ := c.Get("user_email")
-		actorName := ""
-		actorEmail := ""
-		if userName != nil {
-			actorName = userName.(string)
-		}
-		if userEmail != nil {
-			actorEmail = userEmail.(string)
-		}
-		if actorName == "" && actorEmail != "" {
-			actorName = actorEmail
-		}
+		actor := gosharedmw.GetActorInfo(c)
 		parentID := ""
 		if category.ParentID != nil {
 			parentID = category.ParentID.String()
@@ -401,9 +377,9 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 			parentID,
 			category.Slug,
 			description,
-			c.GetString("user_id"),
-			actorName,
-			actorEmail,
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
 		)
 	}
 
@@ -440,27 +416,15 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 
 	// Publish category deleted event for audit trail
 	if h.eventsPublisher != nil && category != nil {
-		userName, _ := c.Get("username")
-		userEmail, _ := c.Get("user_email")
-		actorName := ""
-		actorEmail := ""
-		if userName != nil {
-			actorName = userName.(string)
-		}
-		if userEmail != nil {
-			actorEmail = userEmail.(string)
-		}
-		if actorName == "" && actorEmail != "" {
-			actorName = actorEmail
-		}
+		actor := gosharedmw.GetActorInfo(c)
 		_ = h.eventsPublisher.PublishCategoryDeleted(
 			c.Request.Context(),
 			tenantID,
 			category.ID.String(),
 			category.Name,
-			c.GetString("user_id"),
-			actorName,
-			actorEmail,
+			actor.ActorID,
+			actor.ActorName,
+			actor.ActorEmail,
 		)
 	}
 

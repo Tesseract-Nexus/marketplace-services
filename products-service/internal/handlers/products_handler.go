@@ -13,6 +13,8 @@ import (
 	"products-service/internal/events"
 	"products-service/internal/models"
 	"products-service/internal/repository"
+
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 )
 
 type ProductsHandler struct {
@@ -214,18 +216,8 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 
 	// Publish product created event for audit trail
 	if h.eventsPublisher != nil {
-		// Use IstioAuth context keys: username, user_email
-		userName, _ := c.Get("username")
-		userEmail, _ := c.Get("user_email")
-		actorName := ""
-		actorEmail := ""
-		if userName != nil {
-			actorName = userName.(string)
-		}
-		if userEmail != nil {
-			actorEmail = userEmail.(string)
-		}
-		_ = h.eventsPublisher.PublishProductCreated(c.Request.Context(), product, tenantID.(string), userID.(string), actorName, actorEmail)
+		actor := gosharedmw.GetActorInfo(c)
+		_ = h.eventsPublisher.PublishProductCreated(c.Request.Context(), product, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail)
 	}
 
 	// Create approval request for product publication
@@ -703,17 +695,7 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 
 	// Publish product updated event for audit trail
 	if h.eventsPublisher != nil {
-		// Use IstioAuth context keys: username, user_email
-		userName, _ := c.Get("username")
-		userEmail, _ := c.Get("user_email")
-		actorName := ""
-		actorEmail := ""
-		if userName != nil {
-			actorName = userName.(string)
-		}
-		if userEmail != nil {
-			actorEmail = userEmail.(string)
-		}
+		actor := gosharedmw.GetActorInfo(c)
 		// Track which fields were changed
 		changedFields := []string{}
 		if req.Name != nil {
@@ -725,7 +707,7 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 		if req.Description != nil {
 			changedFields = append(changedFields, "description")
 		}
-		_ = h.eventsPublisher.PublishProductUpdated(c.Request.Context(), product, nil, changedFields, tenantID.(string), userID.(string), actorName, actorEmail)
+		_ = h.eventsPublisher.PublishProductUpdated(c.Request.Context(), product, nil, changedFields, tenantID.(string), actor.ActorID, actor.ActorName, actor.ActorEmail)
 	}
 
 	c.JSON(http.StatusOK, models.ProductResponse{
