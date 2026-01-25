@@ -114,7 +114,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		}
 		parentID := ""
 		if req.ParentID != nil {
-			parentID = *req.ParentID
+			parentID = req.ParentID.String()
 		}
 		description := ""
 		if req.Description != nil {
@@ -387,7 +387,7 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		}
 		parentID := ""
 		if category.ParentID != nil {
-			parentID = *category.ParentID
+			parentID = category.ParentID.String()
 		}
 		description := ""
 		if category.Description != nil {
