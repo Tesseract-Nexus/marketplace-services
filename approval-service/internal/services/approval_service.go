@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -204,12 +205,25 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 	// Check if approver has required role or delegation
 	actualRole = approverRole
 
+	// Debug logging
+	log.Printf("[ApproveRequest] RequestID: %s, ApproverID: %s, ApproverRole: %s, CurrentApproverRole: %s, RequesterID: %s, WorkflowID: %s",
+		requestID, approverID, approverRole, request.CurrentApproverRole, request.RequesterID, request.WorkflowID)
+	if request.Workflow != nil {
+		log.Printf("[ApproveRequest] Workflow found: ID=%s, Name=%s, ApproverConfig=%s", request.Workflow.ID, request.Workflow.Name, string(request.Workflow.ApproverConfig))
+	} else {
+		log.Printf("[ApproveRequest] Workflow is nil!")
+	}
+
 	if request.CurrentApproverRole != "" && approverRole != request.CurrentApproverRole {
+		roleCheck := isRoleHigherOrEqual(approverRole, request.CurrentApproverRole)
+		log.Printf("[ApproveRequest] Role check: isRoleHigherOrEqual(%s, %s) = %v", approverRole, request.CurrentApproverRole, roleCheck)
 		// Check if approver role has higher priority
-		if !isRoleHigherOrEqual(approverRole, request.CurrentApproverRole) {
+		if !roleCheck {
 			// Check for delegation - can this user approve on behalf of someone with the required role?
 			canApproveViaDelegation, delegatorID := s.checkDelegationAuthorization(ctx, request.TenantID, approverID, &request.WorkflowID, request.CurrentApproverRole)
+			log.Printf("[ApproveRequest] Delegation check: canApprove=%v", canApproveViaDelegation)
 			if !canApproveViaDelegation {
+				log.Printf("[ApproveRequest] DENYING approval: role %s cannot approve for %s", approverRole, request.CurrentApproverRole)
 				return nil, ErrUnauthorizedApprover
 			}
 			// Approving via delegation
