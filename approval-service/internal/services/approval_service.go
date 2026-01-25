@@ -25,13 +25,13 @@ var (
 
 // ApprovalService handles approval business logic
 type ApprovalService struct {
-	repo       *repository.ApprovalRepository
+	repo       repository.ApprovalRepositoryInterface
 	publisher  *events.Publisher
 	rbacClient *rbac.Client
 }
 
 // NewApprovalService creates a new ApprovalService
-func NewApprovalService(repo *repository.ApprovalRepository, publisher *events.Publisher, rbacClient *rbac.Client) *ApprovalService {
+func NewApprovalService(repo repository.ApprovalRepositoryInterface, publisher *events.Publisher, rbacClient *rbac.Client) *ApprovalService {
 	return &ApprovalService{
 		repo:       repo,
 		publisher:  publisher,
@@ -166,7 +166,13 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 }
 
 // ApproveRequest approves an approval request
+// Fix #6: Wrapped in transaction for atomicity
 func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
+	var request *models.ApprovalRequest
+	var delegatedFrom *uuid.UUID
+	var actualRole string
+
+	// Pre-transaction validation
 	request, err := s.repo.GetRequestByID(ctx, requestID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -186,8 +192,7 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 	}
 
 	// Check if approver has required role or delegation
-	actualRole := approverRole
-	delegatedFrom := (*uuid.UUID)(nil)
+	actualRole = approverRole
 
 	if request.CurrentApproverRole != "" && approverRole != request.CurrentApproverRole {
 		// Check if approver role has higher priority
@@ -203,26 +208,48 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 		}
 	}
 
-	// Create decision
-	decision := &models.ApprovalDecision{
-		RequestID:    requestID,
-		ApproverID:   approverID,
-		ApproverRole: actualRole,
-		ChainIndex:   request.CurrentChainIndex,
-		Decision:     models.DecisionApproved,
-		Comment:      comment,
+	// Execute decision creation and status update in a transaction
+	err = s.repo.WithTransaction(ctx, func(txRepo repository.ApprovalRepositoryInterface) error {
+		// Re-fetch request within transaction to ensure consistency
+		txRequest, err := txRepo.GetRequestByID(ctx, requestID)
+		if err != nil {
+			return err
+		}
+
+		// Double-check status within transaction
+		if txRequest.Status != models.StatusPending {
+			return ErrRequestAlreadyDecided
+		}
+
+		// Create decision
+		decision := &models.ApprovalDecision{
+			RequestID:    requestID,
+			ApproverID:   approverID,
+			ApproverRole: actualRole,
+			ChainIndex:   txRequest.CurrentChainIndex,
+			Decision:     models.DecisionApproved,
+			Comment:      comment,
+		}
+
+		if err := txRepo.CreateDecision(ctx, decision); err != nil {
+			return fmt.Errorf("failed to create decision: %w", err)
+		}
+
+		// Update request status
+		if err := txRepo.UpdateRequestStatus(ctx, txRequest, models.StatusApproved); err != nil {
+			return fmt.Errorf("failed to update request status: %w", err)
+		}
+
+		// Update the request reference for post-transaction operations
+		request = txRequest
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	if err := s.repo.CreateDecision(ctx, decision); err != nil {
-		return nil, fmt.Errorf("failed to create decision: %w", err)
-	}
-
-	// Update request status
-	if err := s.repo.UpdateRequestStatus(ctx, request, models.StatusApproved); err != nil {
-		return nil, fmt.Errorf("failed to update request status: %w", err)
-	}
-
-	// Create audit log with delegation info if applicable
+	// Create audit log with delegation info if applicable (outside transaction)
 	metadata := map[string]interface{}{
 		"comment": comment,
 	}
@@ -239,7 +266,13 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 }
 
 // RejectRequest rejects an approval request
+// Fix #6: Wrapped in transaction for atomicity
 func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
+	var request *models.ApprovalRequest
+	var delegatedFrom *uuid.UUID
+	var actualRole string
+
+	// Pre-transaction validation
 	request, err := s.repo.GetRequestByID(ctx, requestID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -254,8 +287,7 @@ func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID
 	}
 
 	// Check if approver has required role or delegation
-	actualRole := approverRole
-	delegatedFrom := (*uuid.UUID)(nil)
+	actualRole = approverRole
 
 	if request.CurrentApproverRole != "" && approverRole != request.CurrentApproverRole {
 		// Check if approver role has higher priority
@@ -270,26 +302,48 @@ func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID
 		}
 	}
 
-	// Create decision
-	decision := &models.ApprovalDecision{
-		RequestID:    requestID,
-		ApproverID:   approverID,
-		ApproverRole: actualRole,
-		ChainIndex:   request.CurrentChainIndex,
-		Decision:     models.DecisionRejected,
-		Comment:      comment,
+	// Execute decision creation and status update in a transaction
+	err = s.repo.WithTransaction(ctx, func(txRepo repository.ApprovalRepositoryInterface) error {
+		// Re-fetch request within transaction to ensure consistency
+		txRequest, err := txRepo.GetRequestByID(ctx, requestID)
+		if err != nil {
+			return err
+		}
+
+		// Double-check status within transaction
+		if txRequest.Status != models.StatusPending {
+			return ErrRequestAlreadyDecided
+		}
+
+		// Create decision
+		decision := &models.ApprovalDecision{
+			RequestID:    requestID,
+			ApproverID:   approverID,
+			ApproverRole: actualRole,
+			ChainIndex:   txRequest.CurrentChainIndex,
+			Decision:     models.DecisionRejected,
+			Comment:      comment,
+		}
+
+		if err := txRepo.CreateDecision(ctx, decision); err != nil {
+			return fmt.Errorf("failed to create decision: %w", err)
+		}
+
+		// Update request status
+		if err := txRepo.UpdateRequestStatus(ctx, txRequest, models.StatusRejected); err != nil {
+			return fmt.Errorf("failed to update request status: %w", err)
+		}
+
+		// Update the request reference for post-transaction operations
+		request = txRequest
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	if err := s.repo.CreateDecision(ctx, decision); err != nil {
-		return nil, fmt.Errorf("failed to create decision: %w", err)
-	}
-
-	// Update request status
-	if err := s.repo.UpdateRequestStatus(ctx, request, models.StatusRejected); err != nil {
-		return nil, fmt.Errorf("failed to update request status: %w", err)
-	}
-
-	// Create audit log with delegation info if applicable
+	// Create audit log with delegation info if applicable (outside transaction)
 	metadata := map[string]interface{}{
 		"comment": comment,
 	}
@@ -665,12 +719,46 @@ func actionTypeToWorkflowName(actionType string) string {
 	return actionType
 }
 
+// ApprovalChainStep represents a step in the approval chain
+type ApprovalChainStep struct {
+	Role     string `json:"role"`
+	Priority int    `json:"priority,omitempty"`
+}
+
+// ExtendedApproverConfig extends ApproverConfig with default role
+type ExtendedApproverConfig struct {
+	models.ApproverConfig
+	DefaultRole string              `json:"default_role,omitempty"`
+	Chain       []ApprovalChainStep `json:"chain,omitempty"`
+}
+
+// Fix #5: extractDefaultRole - properly parse and use workflow configuration
 func extractDefaultRole(workflow *models.ApprovalWorkflow) string {
-	var config models.ApproverConfig
-	if err := json.Unmarshal(workflow.ApproverConfig, &config); err != nil {
-		return "manager"
+	// First try to parse from ApproverConfig
+	var config ExtendedApproverConfig
+	if err := json.Unmarshal(workflow.ApproverConfig, &config); err == nil {
+		// Check if DefaultRole is explicitly set
+		if config.DefaultRole != "" {
+			return config.DefaultRole
+		}
+		// Check if Chain is defined and use first role
+		if len(config.Chain) > 0 && config.Chain[0].Role != "" {
+			return config.Chain[0].Role
+		}
 	}
-	return "manager" // Default role
+
+	// Try to parse ApprovalChain if available
+	if len(workflow.ApprovalChain) > 0 {
+		var chain []ApprovalChainStep
+		if err := json.Unmarshal(workflow.ApprovalChain, &chain); err == nil && len(chain) > 0 {
+			if chain[0].Role != "" {
+				return chain[0].Role
+			}
+		}
+	}
+
+	// Fallback to manager as default
+	return "manager"
 }
 
 func isRoleHigherOrEqual(role, requiredRole string) bool {

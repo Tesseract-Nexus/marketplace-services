@@ -18,6 +18,36 @@ var (
 	ErrVersionConflict = errors.New("version conflict - record was modified by another request")
 )
 
+// ApprovalRepositoryInterface defines the interface for approval repository operations
+type ApprovalRepositoryInterface interface {
+	// Workflow methods
+	GetWorkflowByName(ctx context.Context, tenantID, name string) (*models.ApprovalWorkflow, error)
+	GetWorkflowByID(ctx context.Context, workflowID uuid.UUID) (*models.ApprovalWorkflow, error)
+	ListWorkflows(ctx context.Context, tenantID string) ([]models.ApprovalWorkflow, error)
+	CreateWorkflow(ctx context.Context, workflow *models.ApprovalWorkflow) error
+	UpdateWorkflow(ctx context.Context, workflow *models.ApprovalWorkflow) error
+
+	// Request methods
+	CreateRequest(ctx context.Context, request *models.ApprovalRequest) error
+	GetRequestByID(ctx context.Context, id uuid.UUID) (*models.ApprovalRequest, error)
+	ListPendingRequests(ctx context.Context, tenantID string, approverRole string, limit, offset int) ([]models.ApprovalRequest, int64, error)
+	ListRequestsByRequester(ctx context.Context, tenantID string, requesterID uuid.UUID, limit, offset int) ([]models.ApprovalRequest, int64, error)
+	UpdateRequestStatus(ctx context.Context, request *models.ApprovalRequest, newStatus string) error
+
+	// Decision methods
+	CreateDecision(ctx context.Context, decision *models.ApprovalDecision) error
+
+	// Audit methods
+	CreateAuditLog(ctx context.Context, log *models.ApprovalAuditLog) error
+	GetRequestHistory(ctx context.Context, requestID uuid.UUID) ([]models.ApprovalAuditLog, error)
+
+	// Delegation methods
+	FindActiveDelegations(ctx context.Context, tenantID string, delegateID uuid.UUID, workflowID *uuid.UUID) ([]models.ApprovalDelegation, error)
+
+	// Transaction support
+	WithTransaction(ctx context.Context, fn func(txRepo ApprovalRepositoryInterface) error) error
+}
+
 // ApprovalRepository handles database operations for approvals
 type ApprovalRepository struct {
 	db *gorm.DB
@@ -26,6 +56,19 @@ type ApprovalRepository struct {
 // NewApprovalRepository creates a new ApprovalRepository
 func NewApprovalRepository(db *gorm.DB) *ApprovalRepository {
 	return &ApprovalRepository{db: db}
+}
+
+// Fix #6: WithTransaction executes a function within a database transaction
+func (r *ApprovalRepository) WithTransaction(ctx context.Context, fn func(txRepo ApprovalRepositoryInterface) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txRepo := &ApprovalRepository{db: tx}
+		return fn(txRepo)
+	})
+}
+
+// DB returns the underlying database connection (for advanced use cases)
+func (r *ApprovalRepository) DB() *gorm.DB {
+	return r.db
 }
 
 // --- Workflow Methods ---
@@ -106,8 +149,9 @@ func (r *ApprovalRepository) ListPendingRequests(ctx context.Context, tenantID s
 		query = query.Where("status = ?", statusFilter)
 	}
 
+	// Fix #9: Only match exact role - don't show NULL role requests to specific roles
 	if approverRole != "" {
-		query = query.Where("current_approver_role = ? OR current_approver_role IS NULL", approverRole)
+		query = query.Where("current_approver_role = ?", approverRole)
 	}
 
 	if err := query.Count(&total).Error; err != nil {

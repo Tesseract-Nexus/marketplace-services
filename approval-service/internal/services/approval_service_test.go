@@ -14,10 +14,13 @@ import (
 	"gorm.io/datatypes"
 )
 
-// MockApprovalRepository is a mock implementation of ApprovalRepository
+// MockApprovalRepository is a mock implementation of ApprovalRepositoryInterface
 type MockApprovalRepository struct {
 	mock.Mock
 }
+
+// Ensure MockApprovalRepository implements the interface
+var _ repository.ApprovalRepositoryInterface = (*MockApprovalRepository)(nil)
 
 func (m *MockApprovalRepository) GetWorkflowByName(ctx context.Context, tenantID, name string) (*models.ApprovalWorkflow, error) {
 	args := m.Called(ctx, tenantID, name)
@@ -103,6 +106,14 @@ func (m *MockApprovalRepository) GetRequestHistory(ctx context.Context, requestI
 func (m *MockApprovalRepository) FindActiveDelegations(ctx context.Context, tenantID string, delegateID uuid.UUID, workflowID *uuid.UUID) ([]models.ApprovalDelegation, error) {
 	args := m.Called(ctx, tenantID, delegateID, workflowID)
 	return args.Get(0).([]models.ApprovalDelegation), args.Error(1)
+}
+
+// WithTransaction implements transaction support for the mock
+// For testing, it executes the callback with the mock itself (simulating a transaction)
+func (m *MockApprovalRepository) WithTransaction(ctx context.Context, fn func(txRepo repository.ApprovalRepositoryInterface) error) error {
+	// Execute the function with the mock as the transaction repository
+	// This allows testing the business logic without a real database transaction
+	return fn(m)
 }
 
 // Helper function to create test workflow
