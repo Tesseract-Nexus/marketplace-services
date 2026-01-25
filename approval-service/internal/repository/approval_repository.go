@@ -30,10 +30,13 @@ func NewApprovalRepository(db *gorm.DB) *ApprovalRepository {
 // --- Workflow Methods ---
 
 // GetWorkflowByName retrieves a workflow by tenant and name
+// Falls back to 'system' tenant if no tenant-specific workflow found
 func (r *ApprovalRepository) GetWorkflowByName(ctx context.Context, tenantID, name string) (*models.ApprovalWorkflow, error) {
 	var workflow models.ApprovalWorkflow
+	// Try tenant-specific workflow first, then fall back to system workflows
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND name = ? AND is_active = true", tenantID, name).
+		Where("(tenant_id = ? OR tenant_id = 'system') AND name = ? AND is_active = true", tenantID, name).
+		Order("CASE WHEN tenant_id = ? THEN 0 ELSE 1 END", tenantID). // Prefer tenant-specific
 		First(&workflow).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -45,11 +48,12 @@ func (r *ApprovalRepository) GetWorkflowByName(ctx context.Context, tenantID, na
 }
 
 // ListWorkflows retrieves all active workflows for a tenant
+// Includes both tenant-specific and system workflows
 func (r *ApprovalRepository) ListWorkflows(ctx context.Context, tenantID string) ([]models.ApprovalWorkflow, error) {
 	var workflows []models.ApprovalWorkflow
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND is_active = true", tenantID).
-		Order("created_at DESC").
+		Where("(tenant_id = ? OR tenant_id = 'system') AND is_active = true", tenantID).
+		Order("CASE WHEN tenant_id = ? THEN 0 ELSE 1 END, created_at DESC", tenantID). // Tenant-specific first
 		Find(&workflows).Error
 	return workflows, err
 }
