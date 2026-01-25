@@ -108,9 +108,9 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		if userEmail != nil {
 			actorEmail = userEmail.(string)
 		}
-		// Fallback to user_id if username not available
-		if actorName == "" {
-			actorName = c.GetString("user_id")
+		// Fallback: use email if username not available (avoid using UUID as display name)
+		if actorName == "" && actorEmail != "" {
+			actorName = actorEmail
 		}
 		parentID := ""
 		if req.ParentID != nil {
@@ -382,8 +382,8 @@ func (h *CategoryHandler) UpdateCategory(c *gin.Context) {
 		if userEmail != nil {
 			actorEmail = userEmail.(string)
 		}
-		if actorName == "" {
-			actorName = c.GetString("user_id")
+		if actorName == "" && actorEmail != "" {
+			actorName = actorEmail
 		}
 		parentID := ""
 		if category.ParentID != nil {
@@ -450,8 +450,8 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 		if userEmail != nil {
 			actorEmail = userEmail.(string)
 		}
-		if actorName == "" {
-			actorName = c.GetString("user_id")
+		if actorName == "" && actorEmail != "" {
+			actorName = actorEmail
 		}
 		_ = h.eventsPublisher.PublishCategoryDeleted(
 			c.Request.Context(),
