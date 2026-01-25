@@ -640,15 +640,18 @@ type RoleLevelRule struct {
 
 func roleToPriority(role string) int {
 	priorities := map[string]int{
-		"viewer":      10,
-		"member":      20,
-		"employee":    25,
-		"staff":       25,
-		"manager":     30,
-		"admin":       40,
-		"owner":       50,
-		"store_owner": 60,
-		"super_admin": 100,
+		"viewer":            10,
+		"customer_support":  50,
+		"inventory_manager": 60,
+		"marketing_manager": 60,
+		"order_manager":     60,
+		"manager":           70,
+		"store_manager":     70,
+		"admin":             90,
+		"store_admin":       90,
+		"owner":             100,
+		"store_owner":       100,
+		"super_admin":       100,
 	}
 	if p, ok := priorities[role]; ok {
 		return p
@@ -776,15 +779,18 @@ func extractDefaultRole(workflow *models.ApprovalWorkflow) string {
 
 func isRoleHigherOrEqual(role, requiredRole string) bool {
 	priority := map[string]int{
-		"viewer":      10,
-		"member":      20,
-		"employee":    25,
-		"staff":       25,
-		"manager":     30,
-		"admin":       40,
-		"owner":       50,
-		"store_owner": 60,
-		"super_admin": 100,
+		"viewer":            10,
+		"customer_support":  50,
+		"inventory_manager": 60,
+		"marketing_manager": 60,
+		"order_manager":     60,
+		"manager":           70,
+		"store_manager":     70,
+		"admin":             90,
+		"store_admin":       90,
+		"owner":             100,
+		"store_owner":       100,
+		"super_admin":       100,
 	}
 	return priority[role] >= priority[requiredRole]
 }
