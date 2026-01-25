@@ -305,6 +305,70 @@ func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID
 	return request, nil
 }
 
+// RequestChanges marks an approval request as needing changes
+func (s *ApprovalService) RequestChanges(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
+	request, err := s.repo.GetRequestByID(ctx, requestID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrRequestNotFound
+		}
+		return nil, err
+	}
+
+	// Check if request is still pending
+	if request.Status != models.StatusPending && request.Status != models.StatusRequestChanges {
+		return nil, ErrRequestAlreadyDecided
+	}
+
+	// Check if approver has required role or delegation
+	actualRole := approverRole
+	delegatedFrom := (*uuid.UUID)(nil)
+
+	if request.CurrentApproverRole != "" && approverRole != request.CurrentApproverRole {
+		// Check if approver role has higher priority
+		if !isRoleHigherOrEqual(approverRole, request.CurrentApproverRole) {
+			// Check for delegation
+			canRequestChangesViaDelegation, delegatorID := s.checkDelegationAuthorization(ctx, request.TenantID, approverID, &request.WorkflowID, request.CurrentApproverRole)
+			if !canRequestChangesViaDelegation {
+				return nil, ErrUnauthorizedApprover
+			}
+			actualRole = request.CurrentApproverRole + " (delegated)"
+			delegatedFrom = delegatorID
+		}
+	}
+
+	// Create decision
+	decision := &models.ApprovalDecision{
+		RequestID:    requestID,
+		ApproverID:   approverID,
+		ApproverRole: actualRole,
+		ChainIndex:   request.CurrentChainIndex,
+		Decision:     models.DecisionRequestChanges,
+		Comment:      comment,
+	}
+
+	if err := s.repo.CreateDecision(ctx, decision); err != nil {
+		return nil, fmt.Errorf("failed to create decision: %w", err)
+	}
+
+	// Update request status to request_changes
+	if err := s.repo.UpdateRequestStatus(ctx, request, models.StatusRequestChanges); err != nil {
+		return nil, fmt.Errorf("failed to update request status: %w", err)
+	}
+
+	// Create audit log with delegation info if applicable
+	metadata := map[string]interface{}{
+		"comment": comment,
+	}
+	if delegatedFrom != nil {
+		metadata["delegated_from"] = delegatedFrom.String()
+		metadata["via_delegation"] = true
+	}
+	s.createAuditLog(ctx, request, models.AuditEventRequestChanges, &approverID, metadata)
+
+	return request, nil
+}
+
 // CancelRequest cancels an approval request
 func (s *ApprovalService) CancelRequest(ctx context.Context, requestID uuid.UUID, requesterID uuid.UUID) (*models.ApprovalRequest, error) {
 	request, err := s.repo.GetRequestByID(ctx, requestID)

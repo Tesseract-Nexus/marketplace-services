@@ -169,6 +169,7 @@ func main() {
 		api.DELETE("/approvals/:id", approvalHandler.CancelRequest) // Only requester can cancel
 		api.POST("/approvals/:id/approve", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsApprove), approvalHandler.ApproveRequest)
 		api.POST("/approvals/:id/reject", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsReject), approvalHandler.RejectRequest)
+		api.POST("/approvals/:id/request-changes", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsReject), approvalHandler.RequestChangesRequest)
 		api.GET("/approvals/:id/history", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsRead), approvalHandler.GetRequestHistory)
 	}
 

@@ -27,8 +27,9 @@ func (ApprovalDecision) TableName() string {
 
 // Decision constants
 const (
-	DecisionApproved = "approved"
-	DecisionRejected = "rejected"
+	DecisionApproved       = "approved"
+	DecisionRejected       = "rejected"
+	DecisionRequestChanges = "request_changes"
 )
 
 // ApprovalAuditLog represents an audit trail entry
@@ -58,6 +59,7 @@ const (
 	AuditEventDelegated         = "delegated"
 	AuditEventApproved          = "approved"
 	AuditEventRejected          = "rejected"
+	AuditEventRequestChanges    = "request_changes"
 	AuditEventCancelled         = "cancelled"
 	AuditEventExpired           = "expired"
 	AuditEventActionExecuted    = "action_executed"

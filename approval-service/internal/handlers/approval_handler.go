@@ -298,6 +298,58 @@ func (h *ApprovalHandler) RejectRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, request)
 }
 
+// RequestChangesRequest requests changes on an approval request
+// @Summary Request changes on a request
+// @Tags Approvals
+// @Accept json
+// @Produce json
+// @Param id path string true "Request ID"
+// @Param request body map[string]string true "Comment describing required changes"
+// @Success 200 {object} models.ApprovalRequest
+// @Router /api/v1/approvals/{id}/request-changes [post]
+func (h *ApprovalHandler) RequestChangesRequest(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request id"})
+		return
+	}
+
+	userIDStr := c.GetString("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		return
+	}
+
+	userRole := c.GetString("user_role")
+
+	var body struct {
+		Comment string `json:"comment" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "comment describing required changes is required"})
+		return
+	}
+
+	request, err := h.service.RequestChanges(c.Request.Context(), id, userID, userRole, body.Comment)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch err {
+		case services.ErrRequestNotFound:
+			status = http.StatusNotFound
+		case services.ErrUnauthorizedApprover:
+			status = http.StatusForbidden
+		case services.ErrRequestAlreadyDecided:
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, request)
+}
+
 // CancelRequest cancels an approval request
 // @Summary Cancel request
 // @Tags Approvals
