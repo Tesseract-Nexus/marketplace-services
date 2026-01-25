@@ -131,7 +131,8 @@ func (c *ApprovalClient) CheckApproval(req *CheckApprovalRequest, tenantID strin
 
 // CreateApprovalRequestCall creates a new approval request
 // Uses the internal endpoint which doesn't require RBAC permission
-func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, tenantID string) (*ApprovalRequestResponse, error) {
+// Requires tenantID and userID for auth headers (Istio JWT claim format)
+func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, tenantID, userID string) (*ApprovalRequestResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -143,7 +144,10 @@ func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, t
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)
+	// Set Istio JWT claim headers for auth middleware
+	httpReq.Header.Set("x-jwt-claim-sub", userID)           // Required: user_id (sub claim)
+	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)   // Required: tenant_id
+	httpReq.Header.Set("x-jwt-claim-email", req.RequestedByName) // Optional: for audit
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -222,7 +226,7 @@ func (c *ApprovalClient) CreateProductApprovalRequest(tenantID, userID, userName
 			"action":       "publish",
 		},
 	}
-	return c.CreateApprovalRequestCall(req, tenantID)
+	return c.CreateApprovalRequestCall(req, tenantID, userID)
 }
 
 // CreateCategoryApprovalRequest creates an approval request for category creation/publication
@@ -241,5 +245,5 @@ func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, userNam
 			"action":        "publish",
 		},
 	}
-	return c.CreateApprovalRequestCall(req, tenantID)
+	return c.CreateApprovalRequestCall(req, tenantID, userID)
 }
