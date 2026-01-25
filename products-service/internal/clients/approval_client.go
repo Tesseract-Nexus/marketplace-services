@@ -217,6 +217,7 @@ func (c *ApprovalClient) CreateProductApprovalRequest(tenantID, userID, userName
 		ActionType:      string(ApprovalTypeProductCreate),
 		ResourceType:    "product",
 		ResourceID:      productID,
+		ResourceRef:     productName, // Set entity reference to product name
 		RequestedByID:   userID,
 		RequestedByName: userName,
 		Reason:          fmt.Sprintf("Request to publish product: %s", productName),
@@ -236,6 +237,7 @@ func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, userNam
 		ActionType:      string(ApprovalTypeCategoryCreate),
 		ResourceType:    "category",
 		ResourceID:      categoryID,
+		ResourceRef:     categoryName, // Set entity reference to category name
 		RequestedByID:   userID,
 		RequestedByName: userName,
 		Reason:          fmt.Sprintf("Request to publish category: %s", categoryName),

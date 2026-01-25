@@ -937,8 +937,11 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 	}
 
 	// Publish async to avoid blocking
+	// Use a background context with timeout since the HTTP request context may be canceled
 	go func() {
-		if err := s.publisher.PublishApproval(ctx, event); err != nil {
+		publishCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.publisher.PublishApproval(publishCtx, event); err != nil {
 			// Log error but don't fail the operation
 			fmt.Printf("failed to publish approval event: %v\n", err)
 		}
