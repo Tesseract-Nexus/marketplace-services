@@ -18,6 +18,36 @@ var (
 	ErrVersionConflict = errors.New("version conflict - record was modified by another request")
 )
 
+// Role hierarchy for approval permissions
+// Higher roles can approve requests meant for lower roles
+var roleHierarchy = map[string]int{
+	"owner":       100,
+	"store_owner": 95,
+	"admin":       90,
+	"super_admin": 85,
+	"manager":     70,
+	"staff":       50,
+	"customer":    30,
+	"viewer":      10,
+}
+
+// getAllowedApproverRoles returns all roles that the given role can approve for
+// e.g., store_owner can approve requests for manager, staff, customer
+func getAllowedApproverRoles(userRole string) []string {
+	userPriority, exists := roleHierarchy[userRole]
+	if !exists {
+		return []string{userRole}
+	}
+
+	var allowedRoles []string
+	for role, priority := range roleHierarchy {
+		if priority <= userPriority {
+			allowedRoles = append(allowedRoles, role)
+		}
+	}
+	return allowedRoles
+}
+
 // ApprovalRepositoryInterface defines the interface for approval repository operations
 type ApprovalRepositoryInterface interface {
 	// Workflow methods
@@ -149,9 +179,15 @@ func (r *ApprovalRepository) ListPendingRequests(ctx context.Context, tenantID s
 		query = query.Where("status = ?", statusFilter)
 	}
 
-	// Fix #9: Only match exact role - don't show NULL role requests to specific roles
+	// Role hierarchy: higher roles can see and approve requests for lower roles
+	// owner > store_owner > admin > super_admin > manager > staff > customer
 	if approverRole != "" {
-		query = query.Where("current_approver_role = ?", approverRole)
+		allowedRoles := getAllowedApproverRoles(approverRole)
+		if len(allowedRoles) > 0 {
+			query = query.Where("current_approver_role IN ?", allowedRoles)
+		} else {
+			query = query.Where("current_approver_role = ?", approverRole)
+		}
 	}
 
 	if err := query.Count(&total).Error; err != nil {
