@@ -341,9 +341,9 @@ func (s *ApprovalService) GetRequest(ctx context.Context, requestID uuid.UUID) (
 	return request, nil
 }
 
-// ListPendingRequests lists pending requests for an approver
-func (s *ApprovalService) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
-	return s.repo.ListPendingRequests(ctx, tenantID, approverRole, limit, offset)
+// ListPendingRequests lists requests for an approver with optional status filter
+func (s *ApprovalService) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, statusFilter string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
+	return s.repo.ListPendingRequests(ctx, tenantID, approverRole, statusFilter, limit, offset)
 }
 
 // ListMyRequests lists requests submitted by a user

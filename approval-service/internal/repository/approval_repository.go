@@ -92,13 +92,19 @@ func (r *ApprovalRepository) GetRequestByID(ctx context.Context, id uuid.UUID) (
 	return &request, nil
 }
 
-// ListPendingRequests retrieves pending requests for a tenant that match approver criteria
-func (r *ApprovalRepository) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
+// ListPendingRequests retrieves requests for a tenant with optional status filter
+// If statusFilter is empty or "all", returns all statuses; otherwise filters by the specified status
+func (r *ApprovalRepository) ListPendingRequests(ctx context.Context, tenantID string, approverRole string, statusFilter string, limit, offset int) ([]models.ApprovalRequest, int64, error) {
 	var requests []models.ApprovalRequest
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.ApprovalRequest{}).
-		Where("tenant_id = ? AND status = ?", tenantID, models.StatusPending)
+		Where("tenant_id = ?", tenantID)
+
+	// Apply status filter if provided (not empty and not "all")
+	if statusFilter != "" && statusFilter != "all" {
+		query = query.Where("status = ?", statusFilter)
+	}
 
 	if approverRole != "" {
 		query = query.Where("current_approver_role = ? OR current_approver_role IS NULL", approverRole)

@@ -119,10 +119,11 @@ func (h *ApprovalHandler) GetRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, request)
 }
 
-// ListPendingRequests lists pending approval requests
-// @Summary List pending approval requests
+// ListPendingRequests lists approval requests with optional status filter
+// @Summary List approval requests
 // @Tags Approvals
 // @Produce json
+// @Param status query string false "Status filter (pending, approved, rejected, request_changes, cancelled, expired)"
 // @Param limit query int false "Limit" default(20)
 // @Param offset query int false "Offset" default(0)
 // @Success 200 {object} map[string]interface{}
@@ -131,10 +132,14 @@ func (h *ApprovalHandler) ListPendingRequests(c *gin.Context) {
 	tenantID := c.GetString("tenant_id")
 	approverRole := c.GetString("user_role")
 
+	// Get optional status filter from query params
+	// If not provided or "all", returns all statuses (default behavior for backwards compatibility is pending)
+	statusFilter := c.Query("status")
+
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	requests, total, err := h.service.ListPendingRequests(c.Request.Context(), tenantID, approverRole, limit, offset)
+	requests, total, err := h.service.ListPendingRequests(c.Request.Context(), tenantID, approverRole, statusFilter, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
