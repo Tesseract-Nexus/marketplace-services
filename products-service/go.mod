@@ -3,7 +3,7 @@ module products-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.2.2-0.20260125030919-e6ce5b1b700c
+	github.com/Tesseract-Nexus/go-shared v0.2.2-0.20260125032353-61854b905cfb
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
