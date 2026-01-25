@@ -14,6 +14,7 @@ type ApprovalRequest struct {
 	TenantID            string         `gorm:"type:varchar(255);not null;index" json:"tenantId"`
 	WorkflowID          uuid.UUID      `gorm:"type:uuid;not null;index" json:"workflowId"`
 	RequesterID         uuid.UUID      `gorm:"type:uuid;not null;index" json:"requesterId"`
+	RequesterName       string         `gorm:"type:varchar(255)" json:"requestedByName,omitempty"`
 	Status              string         `gorm:"type:varchar(30);not null;default:'pending';index" json:"status"`
 	Version             int            `gorm:"not null;default:1" json:"version"` // Optimistic locking
 

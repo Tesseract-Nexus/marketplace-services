@@ -57,13 +57,14 @@ type CheckResponse struct {
 
 // CreateRequestInput represents input for creating an approval request
 type CreateRequestInput struct {
-	WorkflowName string                 `json:"workflowName"`
-	ActionType   string                 `json:"actionType"`
-	ActionData   map[string]interface{} `json:"actionData"`
-	ResourceType string                 `json:"resourceType,omitempty"`
-	ResourceID   *uuid.UUID             `json:"resourceId,omitempty"`
-	Reason       string                 `json:"reason,omitempty"`
-	Priority     string                 `json:"priority,omitempty"`
+	WorkflowName    string                 `json:"workflowName"`
+	ActionType      string                 `json:"actionType"`
+	ActionData      map[string]interface{} `json:"actionData"`
+	ResourceType    string                 `json:"resourceType,omitempty"`
+	ResourceID      *uuid.UUID             `json:"resourceId,omitempty"`
+	Reason          string                 `json:"reason,omitempty"`
+	Priority        string                 `json:"priority,omitempty"`
+	RequesterName   string                 `json:"requesterName,omitempty"`
 }
 
 // CheckApproval checks if an action requires approval
@@ -130,6 +131,7 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 		TenantID:            tenantID,
 		WorkflowID:          workflow.ID,
 		RequesterID:         requesterID,
+		RequesterName:       input.RequesterName,
 		Status:              models.StatusPending,
 		ActionType:          input.ActionType,
 		ActionData:          datatypes.JSON(actionDataJSON),

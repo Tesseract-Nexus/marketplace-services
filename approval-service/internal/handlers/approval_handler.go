@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"approval-service/internal/services"
 )
 
@@ -76,6 +77,12 @@ func (h *ApprovalHandler) CreateRequest(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Get actor info for requester name (uses name > preferred_username > email fallback)
+	actor := gosharedmw.GetActorInfo(c)
+	if input.RequesterName == "" && actor.ActorName != "" {
+		input.RequesterName = actor.ActorName
 	}
 
 	request, err := h.service.CreateRequest(c.Request.Context(), tenantID, userID, input)
