@@ -156,6 +156,11 @@ func main() {
 		// Service-to-service endpoint (for domain services to check if approval needed)
 		api.POST("/approvals/check", approvalHandler.CheckApproval)
 
+		// Service-to-service endpoint for creating approval requests (no RBAC - internal services only)
+		// This is used by products-service, categories-service, etc. to create approval requests
+		// on behalf of users when they create/update resources
+		api.POST("/approvals/internal", approvalHandler.CreateRequest)
+
 		// User-facing endpoints
 		api.POST("/approvals", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsCreate), approvalHandler.CreateRequest)
 		api.GET("/approvals/pending", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsRead), approvalHandler.ListPendingRequests)

@@ -61,13 +61,14 @@ type ApprovalRequestID struct {
 }
 
 // CreateApprovalRequestCall creates a new approval request
+// Uses the internal endpoint which doesn't require RBAC permission
 func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, tenantID, userID string) (*ApprovalRequestResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/v1/approvals", bytes.NewBuffer(body))
+	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/v1/approvals/internal", bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
