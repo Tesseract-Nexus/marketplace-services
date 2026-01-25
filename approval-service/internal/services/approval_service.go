@@ -723,6 +723,16 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 		var actionData map[string]interface{}
 		if err := json.Unmarshal(request.ActionData, &actionData); err == nil {
 			event.ActionData = actionData
+
+			// Fallback: extract ResourceID from actionData if not set on request
+			// This handles legacy approval requests created before ResourceID fix
+			if event.ResourceID == "" {
+				if productID, ok := actionData["product_id"].(string); ok && productID != "" {
+					event.ResourceID = productID
+				} else if categoryID, ok := actionData["category_id"].(string); ok && categoryID != "" {
+					event.ResourceID = categoryID
+				}
+			}
 		}
 	}
 
