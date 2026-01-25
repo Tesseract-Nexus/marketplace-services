@@ -63,6 +63,7 @@ type ApprovalRepositoryInterface interface {
 	ListPendingRequests(ctx context.Context, tenantID string, approverRole string, statusFilter string, limit, offset int) ([]models.ApprovalRequest, int64, error)
 	ListRequestsByRequester(ctx context.Context, tenantID string, requesterID uuid.UUID, limit, offset int) ([]models.ApprovalRequest, int64, error)
 	UpdateRequestStatus(ctx context.Context, request *models.ApprovalRequest, newStatus string) error
+	HasPendingApprovalForResource(ctx context.Context, tenantID string, resourceType string, resourceID uuid.UUID, actionType string) (bool, *models.ApprovalRequest, error)
 
 	// Decision methods
 	CreateDecision(ctx context.Context, decision *models.ApprovalDecision) error
@@ -305,6 +306,22 @@ func (r *ApprovalRepository) CheckExecutionID(ctx context.Context, executionID u
 		Where("execution_id = ?", executionID).
 		Count(&count).Error
 	return count > 0, err
+}
+
+// HasPendingApprovalForResource checks if there's already a pending approval for the same resource
+func (r *ApprovalRepository) HasPendingApprovalForResource(ctx context.Context, tenantID string, resourceType string, resourceID uuid.UUID, actionType string) (bool, *models.ApprovalRequest, error) {
+	var request models.ApprovalRequest
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND resource_type = ? AND resource_id = ? AND action_type = ? AND status = ?",
+			tenantID, resourceType, resourceID, actionType, models.StatusPending).
+		First(&request).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil, nil
+		}
+		return false, nil, err
+	}
+	return true, &request, nil
 }
 
 // --- Escalation Methods ---

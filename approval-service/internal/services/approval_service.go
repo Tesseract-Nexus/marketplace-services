@@ -136,6 +136,20 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 		}
 	}
 
+	// Check for existing pending approval for the same resource to prevent duplicates
+	if resourceID != nil && input.ResourceType != "" {
+		hasPending, existingRequest, err := s.repo.HasPendingApprovalForResource(ctx, tenantID, input.ResourceType, *resourceID, input.ActionType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check for existing approval: %w", err)
+		}
+		if hasPending && existingRequest != nil {
+			// Return existing pending request instead of creating a duplicate
+			log.Printf("[CreateRequest] Found existing pending approval %s for %s %s, returning existing request",
+				existingRequest.ID, input.ResourceType, input.ResourceID)
+			return existingRequest, nil
+		}
+	}
+
 	request := &models.ApprovalRequest{
 		TenantID:            tenantID,
 		WorkflowID:          workflow.ID,
