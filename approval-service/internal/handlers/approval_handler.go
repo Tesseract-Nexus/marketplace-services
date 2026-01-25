@@ -95,7 +95,14 @@ func (h *ApprovalHandler) CreateRequest(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, request)
+	// Return wrapped response for service-to-service compatibility
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data": gin.H{
+			"id": request.ID.String(),
+		},
+		"message": "Approval request created successfully",
+	})
 }
 
 // GetRequest retrieves an approval request by ID
