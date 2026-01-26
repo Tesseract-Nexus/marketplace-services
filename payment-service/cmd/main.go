@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"github.com/Tesseract-Nexus/go-shared/rbac"
 	"payment-service/internal/clients"
 	"payment-service/internal/config"
@@ -285,7 +286,18 @@ func setupRouter(paymentHandler *handlers.PaymentHandler, webhookHandler *handle
 	// Request validation middleware
 	router.Use(middleware.ValidateRequest())
 
-	// Tenant context middleware
+	// IstioAuth middleware - extracts JWT claims from x-jwt-claim-* headers
+	// This MUST come before TenantMiddleware and RBAC middleware
+	router.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        false, // Don't require auth for all routes (webhooks, health)
+		AllowLegacyHeaders: true,  // Allow X-Tenant-ID fallback during migration
+		SkipPaths: []string{
+			"/health",
+			"/webhooks/",
+		},
+	}))
+
+	// Tenant context middleware (reads from IstioAuth context or legacy headers)
 	router.Use(middleware.TenantMiddleware())
 
 	// Audit logging middleware

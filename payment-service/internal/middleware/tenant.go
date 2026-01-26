@@ -33,12 +33,25 @@ type TenantContext struct {
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// First, check if tenant_id was already set by IstioAuth middleware
+		// IstioAuth sets these from x-jwt-claim-* headers
 		tenantID := c.GetString("tenant_id")
 		if tenantID == "" {
+			// Fallback to legacy headers for backward compatibility
 			tenantID = c.GetHeader("X-Tenant-ID")
 		}
-		userID := c.GetHeader("X-User-ID")
-		vendorID := c.GetHeader("X-Vendor-ID")
+
+		// Get user_id from IstioAuth context (set from x-jwt-claim-sub)
+		userID := c.GetString("user_id")
+		if userID == "" {
+			userID = c.GetHeader("X-User-ID")
+		}
+
+		// Get vendor_id from IstioAuth context (set from x-jwt-claim-vendor-id)
+		vendorID := c.GetString("vendor_id")
+		if vendorID == "" {
+			vendorID = c.GetHeader("X-Vendor-ID")
+		}
+
 		requestID := c.GetHeader("X-Request-ID")
 
 		// For webhook endpoints, tenant ID comes from the payload
