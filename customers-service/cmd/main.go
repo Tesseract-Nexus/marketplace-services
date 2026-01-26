@@ -257,6 +257,10 @@ func main() {
 			// Email verification
 			customers.POST("/:id/send-verification", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), customerHandler.SendVerificationEmail)
 
+			// Lock/Unlock customer accounts
+			customers.POST("/:id/lock", rbacMiddleware.RequirePermission(rbac.PermissionCustomersLock), customerHandler.LockCustomer)
+			customers.POST("/:id/unlock", rbacMiddleware.RequirePermission(rbac.PermissionCustomersLock), customerHandler.UnlockCustomer)
+
 			// Payment methods
 			customers.GET("/:id/payment-methods", rbacMiddleware.RequirePermission(rbac.PermissionCustomersRead), paymentMethodHandler.GetPaymentMethods)
 			customers.DELETE("/:id/payment-methods/:methodId", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), paymentMethodHandler.DeletePaymentMethod)

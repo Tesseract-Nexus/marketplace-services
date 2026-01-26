@@ -631,3 +631,229 @@ func (h *CustomerHandler) VerifyEmail(c *gin.Context) {
 		"customer": customer,
 	})
 }
+
+// LockCustomer handles POST /api/v1/customers/:id/lock
+// This endpoint locks a customer account, setting status to BLOCKED
+func (h *CustomerHandler) LockCustomer(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		tenantID = c.Query("tenant_id")
+	}
+
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_ID",
+				"message": "Invalid customer ID",
+			},
+		})
+		return
+	}
+
+	// Get the staff user ID who is performing the lock action
+	staffUserIDStr := c.GetString("user_id")
+	if staffUserIDStr == "" {
+		// Try to get from JWT claims (Istio)
+		staffUserIDStr = c.GetHeader("x-jwt-claim-sub")
+	}
+	if staffUserIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_USER_ID",
+				"message": "Staff user ID is required to perform this action",
+			},
+		})
+		return
+	}
+
+	staffUserID, err := uuid.Parse(staffUserIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_USER_ID",
+				"message": "Invalid staff user ID",
+			},
+		})
+		return
+	}
+
+	var req services.LockCustomerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
+
+	// Validate reason length
+	if len(req.Reason) < 10 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": "Reason must be at least 10 characters",
+			},
+		})
+		return
+	}
+
+	customer, err := h.service.LockCustomer(c.Request.Context(), tenantID, customerID, staffUserID, req.Reason)
+	if err != nil {
+		// Check for specific error types
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "not found") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "NOT_FOUND",
+					"message": "Customer not found",
+				},
+			})
+			return
+		}
+		if strings.Contains(errMsg, "already blocked") {
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "ALREADY_BLOCKED",
+					"message": "Customer is already blocked",
+				},
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INTERNAL_ERROR",
+				"message": "Failed to lock customer",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    customer,
+	})
+}
+
+// UnlockCustomer handles POST /api/v1/customers/:id/unlock
+// This endpoint unlocks a customer account, setting status to ACTIVE
+func (h *CustomerHandler) UnlockCustomer(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		tenantID = c.Query("tenant_id")
+	}
+
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_ID",
+				"message": "Invalid customer ID",
+			},
+		})
+		return
+	}
+
+	// Get the staff user ID who is performing the unlock action
+	staffUserIDStr := c.GetString("user_id")
+	if staffUserIDStr == "" {
+		// Try to get from JWT claims (Istio)
+		staffUserIDStr = c.GetHeader("x-jwt-claim-sub")
+	}
+	if staffUserIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_USER_ID",
+				"message": "Staff user ID is required to perform this action",
+			},
+		})
+		return
+	}
+
+	staffUserID, err := uuid.Parse(staffUserIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_USER_ID",
+				"message": "Invalid staff user ID",
+			},
+		})
+		return
+	}
+
+	var req services.UnlockCustomerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
+
+	// Validate reason length
+	if len(req.Reason) < 10 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": "Reason must be at least 10 characters",
+			},
+		})
+		return
+	}
+
+	customer, err := h.service.UnlockCustomer(c.Request.Context(), tenantID, customerID, staffUserID, req.Reason)
+	if err != nil {
+		// Check for specific error types
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "not found") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "NOT_FOUND",
+					"message": "Customer not found",
+				},
+			})
+			return
+		}
+		if strings.Contains(errMsg, "not blocked") {
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "NOT_BLOCKED",
+					"message": "Customer is not blocked",
+				},
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INTERNAL_ERROR",
+				"message": "Failed to unlock customer",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    customer,
+	})
+}

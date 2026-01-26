@@ -229,3 +229,63 @@ func BuildFromCustomer(customer *models.Customer) *CustomerNotification {
 		CustomerName:  name,
 	}
 }
+
+// AccountLockedNotification represents an account locked notification payload.
+type AccountLockedNotification struct {
+	TenantID      string `json:"tenantId"`
+	CustomerID    string `json:"customerId"`
+	CustomerEmail string `json:"customerEmail"`
+	CustomerName  string `json:"customerName"`
+	Reason        string `json:"reason"`
+	StorefrontURL string `json:"storefrontUrl,omitempty"`
+	SupportEmail  string `json:"supportEmail,omitempty"`
+}
+
+// SendAccountLockedNotification sends an email when a customer account is locked.
+func (c *NotificationClient) SendAccountLockedNotification(ctx context.Context, notification *AccountLockedNotification) error {
+	req := notificationRequest{
+		Channel:        "EMAIL",
+		RecipientEmail: notification.CustomerEmail,
+		Subject:        "Your Account Has Been Temporarily Locked",
+		TemplateName:   "account_locked",
+		TenantID:       notification.TenantID,
+		UserID:         notification.CustomerID,
+		Variables: map[string]interface{}{
+			"customerName":  notification.CustomerName,
+			"customerEmail": notification.CustomerEmail,
+			"reason":        notification.Reason,
+			"storefrontUrl": notification.StorefrontURL,
+			"supportEmail":  notification.SupportEmail,
+		},
+	}
+
+	return c.sendNotification(ctx, req)
+}
+
+// AccountUnlockedNotification represents an account unlocked notification payload.
+type AccountUnlockedNotification struct {
+	TenantID      string `json:"tenantId"`
+	CustomerID    string `json:"customerId"`
+	CustomerEmail string `json:"customerEmail"`
+	CustomerName  string `json:"customerName"`
+	StorefrontURL string `json:"storefrontUrl,omitempty"`
+}
+
+// SendAccountUnlockedNotification sends an email when a customer account is unlocked.
+func (c *NotificationClient) SendAccountUnlockedNotification(ctx context.Context, notification *AccountUnlockedNotification) error {
+	req := notificationRequest{
+		Channel:        "EMAIL",
+		RecipientEmail: notification.CustomerEmail,
+		Subject:        "Your Account Has Been Reactivated",
+		TemplateName:   "account_unlocked",
+		TenantID:       notification.TenantID,
+		UserID:         notification.CustomerID,
+		Variables: map[string]interface{}{
+			"customerName":  notification.CustomerName,
+			"customerEmail": notification.CustomerEmail,
+			"storefrontUrl": notification.StorefrontURL,
+		},
+	}
+
+	return c.sendNotification(ctx, req)
+}

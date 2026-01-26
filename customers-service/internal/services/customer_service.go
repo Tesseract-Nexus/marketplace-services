@@ -483,3 +483,121 @@ func (s *CustomerService) VerifyEmailByAddress(ctx context.Context, tenantID, em
 
 	return customer, nil
 }
+
+// LockCustomerRequest represents request to lock a customer account
+type LockCustomerRequest struct {
+	Reason string `json:"reason" binding:"required,min=10,max=500"`
+}
+
+// UnlockCustomerRequest represents request to unlock a customer account
+type UnlockCustomerRequest struct {
+	Reason string `json:"reason" binding:"required,min=10,max=500"`
+}
+
+// LockCustomer locks a customer account by setting status to BLOCKED
+func (s *CustomerService) LockCustomer(ctx context.Context, tenantID string, customerID uuid.UUID, lockedByUserID uuid.UUID, reason string) (*models.Customer, error) {
+	customer, err := s.repo.GetByID(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("customer not found: %w", err)
+	}
+
+	// Validate customer is not already blocked
+	if customer.Status == models.CustomerStatusBlocked {
+		return nil, fmt.Errorf("customer is already blocked")
+	}
+
+	// Update customer status to blocked
+	now := time.Now()
+	customer.Status = models.CustomerStatusBlocked
+	customer.LockReason = reason
+	customer.LockedAt = &now
+	customer.LockedBy = &lockedByUserID
+	// Clear previous unlock fields
+	customer.UnlockReason = ""
+	customer.UnlockedAt = nil
+	customer.UnlockedBy = nil
+
+	if err := s.repo.Update(ctx, customer); err != nil {
+		return nil, fmt.Errorf("failed to lock customer: %w", err)
+	}
+
+	// Invalidate cache
+	s.repo.InvalidateCache(ctx, tenantID, customerID)
+
+	// Send lock notification email (non-blocking)
+	if s.notificationClient != nil {
+		go func() {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			notification := &clients.AccountLockedNotification{
+				TenantID:      customer.TenantID,
+				CustomerID:    customer.ID.String(),
+				CustomerEmail: customer.Email,
+				CustomerName:  customer.FirstName + " " + customer.LastName,
+				Reason:        reason,
+				StorefrontURL: s.tenantClient.BuildStorefrontURL(notifyCtx, customer.TenantID),
+			}
+
+			if err := s.notificationClient.SendAccountLockedNotification(notifyCtx, notification); err != nil {
+				log.Printf("[CustomerService] Failed to send account locked notification: %v", err)
+			}
+		}()
+	}
+
+	log.Printf("[CustomerService] Customer %s locked by %s: %s", customerID, lockedByUserID, reason)
+
+	return customer, nil
+}
+
+// UnlockCustomer unlocks a customer account by setting status to ACTIVE
+func (s *CustomerService) UnlockCustomer(ctx context.Context, tenantID string, customerID uuid.UUID, unlockedByUserID uuid.UUID, reason string) (*models.Customer, error) {
+	customer, err := s.repo.GetByID(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("customer not found: %w", err)
+	}
+
+	// Validate customer is currently blocked
+	if customer.Status != models.CustomerStatusBlocked {
+		return nil, fmt.Errorf("customer is not blocked")
+	}
+
+	// Update customer status to active
+	now := time.Now()
+	customer.Status = models.CustomerStatusActive
+	customer.UnlockReason = reason
+	customer.UnlockedAt = &now
+	customer.UnlockedBy = &unlockedByUserID
+	// Keep lock fields for history (LockReason, LockedAt, LockedBy)
+
+	if err := s.repo.Update(ctx, customer); err != nil {
+		return nil, fmt.Errorf("failed to unlock customer: %w", err)
+	}
+
+	// Invalidate cache
+	s.repo.InvalidateCache(ctx, tenantID, customerID)
+
+	// Send unlock notification email (non-blocking)
+	if s.notificationClient != nil {
+		go func() {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			notification := &clients.AccountUnlockedNotification{
+				TenantID:      customer.TenantID,
+				CustomerID:    customer.ID.String(),
+				CustomerEmail: customer.Email,
+				CustomerName:  customer.FirstName + " " + customer.LastName,
+				StorefrontURL: s.tenantClient.BuildStorefrontURL(notifyCtx, customer.TenantID),
+			}
+
+			if err := s.notificationClient.SendAccountUnlockedNotification(notifyCtx, notification); err != nil {
+				log.Printf("[CustomerService] Failed to send account unlocked notification: %v", err)
+			}
+		}()
+	}
+
+	log.Printf("[CustomerService] Customer %s unlocked by %s: %s", customerID, unlockedByUserID, reason)
+
+	return customer, nil
+}

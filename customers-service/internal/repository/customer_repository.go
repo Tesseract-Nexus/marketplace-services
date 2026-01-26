@@ -94,6 +94,17 @@ func (r *CustomerRepository) CacheStats() *cache.CacheStats {
 	return &stats
 }
 
+// InvalidateCache invalidates all caches for a customer (public method for service layer)
+func (r *CustomerRepository) InvalidateCache(ctx context.Context, tenantID string, customerID uuid.UUID) {
+	// Get customer to retrieve email for cache invalidation
+	customer, _ := r.GetByID(ctx, tenantID, customerID)
+	email := ""
+	if customer != nil {
+		email = customer.Email
+	}
+	r.invalidateCustomerCaches(ctx, tenantID, customerID, email)
+}
+
 // Create creates a new customer
 func (r *CustomerRepository) Create(ctx context.Context, customer *models.Customer) error {
 	err := r.db.WithContext(ctx).Create(customer).Error

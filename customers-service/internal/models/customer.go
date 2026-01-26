@@ -39,8 +39,16 @@ type Customer struct {
 	FirstName  string         `json:"firstName" gorm:"type:varchar(100);not null"`
 	LastName   string         `json:"lastName" gorm:"type:varchar(100);not null"`
 	Phone      string         `json:"phone" gorm:"type:varchar(50)"`
-	Status     CustomerStatus `json:"status" gorm:"type:varchar(20);default:'ACTIVE';index:idx_customers_tenant_status"`
-	CustomerType CustomerType `json:"customerType" gorm:"type:varchar(20);default:'RETAIL'"`
+	Status       CustomerStatus `json:"status" gorm:"type:varchar(20);default:'ACTIVE';index:idx_customers_tenant_status"`
+	CustomerType CustomerType   `json:"customerType" gorm:"type:varchar(20);default:'RETAIL'"`
+
+	// Lock/Unlock metadata
+	LockReason   string     `json:"lockReason,omitempty" gorm:"type:text"`
+	LockedAt     *time.Time `json:"lockedAt,omitempty"`
+	LockedBy     *uuid.UUID `json:"lockedBy,omitempty" gorm:"type:uuid"`
+	UnlockReason string     `json:"unlockReason,omitempty" gorm:"type:text"`
+	UnlockedAt   *time.Time `json:"unlockedAt,omitempty"`
+	UnlockedBy   *uuid.UUID `json:"unlockedBy,omitempty" gorm:"type:uuid"`
 
 	// Analytics fields
 	TotalOrders        int       `json:"totalOrders" gorm:"default:0"`
