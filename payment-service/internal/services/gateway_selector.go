@@ -352,48 +352,26 @@ func (s *GatewaySelectorService) CreateGatewayFromTemplate(ctx context.Context, 
 	return config, nil
 }
 
-// mapCredentialsForProvider maps incoming credentials to the secret-provisioner expected format
+// mapCredentialsForProvider maps incoming credentials to GCP Secret Manager format
+// This is a generic pass-through that preserves the original field names from the gateway template's required_credentials
+// When adding new payment gateways:
+//   1. Define required_credentials in the gateway template (e.g., ["api_key", "secret_key", "webhook_secret"])
+//   2. The frontend will show input fields based on required_credentials
+//   3. Credentials are stored in GCP Secret Manager as: {env}-tenant-{tenantId}-{provider}-{fieldName}
+//   4. At payment time, fetch credentials using the same field names
+//
+// This approach is fully adaptable - no code changes needed when adding new payment gateways
 func (s *GatewaySelectorService) mapCredentialsForProvider(provider string, credentials map[string]string) map[string]string {
 	result := make(map[string]string)
-	provider = strings.ToLower(provider)
 
-	switch provider {
-	case "stripe":
-		if v, ok := credentials["api_key_public"]; ok && v != "" {
-			result["api_key"] = v // Stripe public key
-		}
-		if v, ok := credentials["api_key_secret"]; ok && v != "" {
-			result["api_key"] = v // Stripe secret key (overwrites public - secret is the main one)
-		}
-		if v, ok := credentials["webhook_secret"]; ok && v != "" {
-			result["webhook_secret"] = v
-		}
-
-	case "razorpay":
-		if v, ok := credentials["api_key_public"]; ok && v != "" {
-			result["key_id"] = v
-		}
-		if v, ok := credentials["api_key_secret"]; ok && v != "" {
-			result["key_secret"] = v
-		}
-		if v, ok := credentials["webhook_secret"]; ok && v != "" {
-			result["webhook_secret"] = v
-		}
-
-	case "paypal":
-		if v, ok := credentials["client_id"]; ok && v != "" {
-			result["client_id"] = v
-		}
-		if v, ok := credentials["client_secret"]; ok && v != "" {
-			result["client_secret"] = v
-		}
-
-	default:
-		// Generic mapping for other providers
-		for k, v := range credentials {
-			if v != "" {
-				result[k] = v
-			}
+	// Generic pass-through: preserve original field names for all providers
+	// This works with any gateway as long as the frontend sends credentials
+	// matching the required_credentials defined in the gateway template
+	for key, value := range credentials {
+		if value != "" {
+			// Normalize key to lowercase with underscores for consistent GCP Secret naming
+			normalizedKey := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+			result[normalizedKey] = value
 		}
 	}
 

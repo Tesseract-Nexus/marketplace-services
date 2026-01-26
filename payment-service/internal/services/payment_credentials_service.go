@@ -187,6 +187,79 @@ func (s *PaymentCredentialsService) GetCredentials(
 	}
 }
 
+// GetDynamicProviderCredentials retrieves credentials for any provider using dynamic key names.
+// This method is fully adaptable - it works with any payment gateway by accepting
+// the key names from the gateway template's required_credentials field.
+//
+// Usage:
+//
+//	// From gateway template, get the required_credentials
+//	keyNames := []string{"merchant_id", "salt_key", "salt_index"} // for PhonePe
+//	creds, err := service.GetDynamicProviderCredentials(ctx, tenantID, vendorID, "phonepe", keyNames)
+//
+// This eliminates the need to add provider-specific methods when integrating new gateways.
+func (s *PaymentCredentialsService) GetDynamicProviderCredentials(
+	ctx context.Context,
+	tenantID, vendorID string,
+	provider string,
+	keyNames []string,
+) (*ProviderCredentials, error) {
+	creds := &ProviderCredentials{
+		Provider: provider,
+		Extra:    make(map[string]string),
+	}
+
+	// Fetch credentials dynamically using the provided key names
+	dynamicCreds, err := s.secretClient.GetDynamicCredentials(
+		ctx, s.environment, tenantID, vendorID,
+		provider, keyNames,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s credentials: %w", provider, err)
+	}
+
+	// Store all retrieved credentials in the Extra map
+	// This allows callers to access any credential by its key name
+	for k, v := range dynamicCreds {
+		creds.Extra[k] = v
+	}
+
+	// For backwards compatibility, try to populate the standard fields
+	// if the provider uses common credential names
+	if v, ok := dynamicCreds["api_key"]; ok {
+		creds.APIKey = v
+	} else if v, ok := dynamicCreds["api_key_secret"]; ok {
+		creds.APIKey = v
+	} else if v, ok := dynamicCreds["key_id"]; ok {
+		creds.APIKey = v
+	} else if v, ok := dynamicCreds["client_id"]; ok {
+		creds.APIKey = v
+	}
+
+	if v, ok := dynamicCreds["api_secret"]; ok {
+		creds.APISecret = v
+	} else if v, ok := dynamicCreds["key_secret"]; ok {
+		creds.APISecret = v
+	} else if v, ok := dynamicCreds["client_secret"]; ok {
+		creds.APISecret = v
+	} else if v, ok := dynamicCreds["secret_key"]; ok {
+		creds.APISecret = v
+	}
+
+	if v, ok := dynamicCreds["webhook_secret"]; ok {
+		creds.WebhookSecret = v
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"tenant_id":   tenantID,
+		"vendor_id":   vendorID,
+		"provider":    provider,
+		"keys_found":  len(dynamicCreds),
+	}).Debug("retrieved dynamic provider credentials")
+
+	return creds, nil
+}
+
 // IsProviderConfigured checks if a provider is configured for a tenant/vendor.
 func (s *PaymentCredentialsService) IsProviderConfigured(
 	ctx context.Context,
