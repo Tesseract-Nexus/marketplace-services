@@ -22,9 +22,13 @@ type Config struct {
 	// Redis
 	RedisURL string
 
-	// Notification service for email notifications
-	NotificationServiceURL string
-	TenantServiceURL       string
+	// Service URLs
+	NotificationServiceURL  string
+	TenantServiceURL        string
+	SecretProvisionerURL    string
+
+	// GCP
+	GCPProjectID string
 
 	// Razorpay (India - Primary)
 	RazorpayKeyID        string
@@ -109,11 +113,13 @@ func getPasswordFromGCPOrEnv() string {
 func Load() *Config {
 	config := &Config{
 		Port:        getEnv("PORT", "8092"),
-		Environment: getEnv("ENVIRONMENT", "development"),
+		Environment: getEnv("ENVIRONMENT", "devtest"),
 		DatabaseURL:            buildDatabaseURL(),
 		RedisURL:               getEnv("REDIS_URL", "redis://redis.redis-marketplace.svc.cluster.local:6379/0"),
-		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.global.svc.cluster.local:8090"),
-		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.global.svc.cluster.local:8080"),
+		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.marketplace.svc.cluster.local:8090"),
+		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.marketplace.svc.cluster.local:8080"),
+		SecretProvisionerURL:   getEnv("SECRET_PROVISIONER_URL", "http://secret-provisioner.marketplace.svc.cluster.local:8080"),
+		GCPProjectID:           getEnv("GCP_PROJECT_ID", "tesseracthub-480811"),
 
 		// Razorpay
 		RazorpayKeyID:         getEnv("RAZORPAY_KEY_ID", ""),
