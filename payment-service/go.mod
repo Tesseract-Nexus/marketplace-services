@@ -3,7 +3,7 @@ module payment-service
 go 1.25
 
 require (
-	github.com/Tesseract-Nexus/go-shared v0.2.6
+	github.com/Tesseract-Nexus/go-shared v0.2.7
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/razorpay/razorpay-go v1.4.0
