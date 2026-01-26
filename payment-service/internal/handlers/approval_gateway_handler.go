@@ -49,8 +49,10 @@ type GatewayConfigResponse struct {
 func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context) {
 	tenantID := getTenantID(c)
 
-	var config models.PaymentGatewayConfig
-	if err := c.ShouldBindJSON(&config); err != nil {
+	// Use GatewayConfigRequest DTO to properly receive credentials
+	// (PaymentGatewayConfig has json:"-" on secret fields which would ignore them)
+	var req models.GatewayConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request",
 			Message: err.Error(),
@@ -58,7 +60,25 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 		return
 	}
 
-	config.TenantID = tenantID
+	// Transfer DTO to model, including credentials
+	config := models.PaymentGatewayConfig{
+		TenantID:              tenantID,
+		GatewayType:           req.GatewayType,
+		DisplayName:           req.DisplayName,
+		IsEnabled:             req.IsEnabled,
+		IsTestMode:            req.IsTestMode,
+		APIKeyPublic:          req.APIKeyPublic,
+		APIKeySecret:          req.APIKeySecret,
+		WebhookSecret:         req.WebhookSecret,
+		Config:                req.Config,
+		SupportsPayments:      req.SupportsPayments,
+		SupportsRefunds:       req.SupportsRefunds,
+		SupportsSubscriptions: req.SupportsSubscriptions,
+		MinimumAmount:         req.MinimumAmount,
+		MaximumAmount:         req.MaximumAmount,
+		Priority:              req.Priority,
+		Description:           req.Description,
+	}
 
 	// Check if user has owner priority (can bypass approval)
 	userPriority := c.GetInt("user_priority")
@@ -94,11 +114,14 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 		EntityReference: fmt.Sprintf("%s Gateway", config.GatewayType),
 		Reason:          fmt.Sprintf("Request to add new payment gateway: %s", config.DisplayName),
 		Metadata: map[string]interface{}{
-			"gateway_type": string(config.GatewayType),
-			"display_name": config.DisplayName,
-			"is_test_mode": config.IsTestMode,
-			"is_enabled":   config.IsEnabled,
-			"config_json":  config,
+			"gateway_type":   string(config.GatewayType),
+			"display_name":   config.DisplayName,
+			"is_test_mode":   config.IsTestMode,
+			"is_enabled":     config.IsEnabled,
+			"api_key_public": config.APIKeyPublic,
+			"api_key_secret": config.APIKeySecret,
+			"webhook_secret": config.WebhookSecret,
+			"config_json":    config,
 		},
 		RequiredPriority: clients.RequiredPriorityForGatewayConfig,
 		ExpiresInHours:   &expiresInHours,
