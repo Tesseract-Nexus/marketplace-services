@@ -23,11 +23,14 @@ import (
 type PaymentService struct {
 	repo               *repository.PaymentRepository
 	config             *PaymentServiceConfig
+	credentialsService *PaymentCredentialsService
 	notificationClient *clients.NotificationClient
 	tenantClient       *clients.TenantClient
+	useDynamicCreds    bool
 }
 
 // PaymentServiceConfig holds environment-based credentials (from sealed secrets)
+// Used as fallback when dynamic credentials are not available
 type PaymentServiceConfig struct {
 	// Stripe
 	StripePublicKey     string
@@ -43,12 +46,32 @@ type PaymentServiceConfig struct {
 }
 
 // NewPaymentService creates a new payment service
+// Deprecated: Use NewPaymentServiceWithCredentials for dynamic credential support
 func NewPaymentService(repo *repository.PaymentRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient) *PaymentService {
 	return &PaymentService{
 		repo:               repo,
 		config:             loadPaymentConfigFromEnv(),
 		notificationClient: notificationClient,
 		tenantClient:       tenantClient,
+		useDynamicCreds:    false,
+	}
+}
+
+// NewPaymentServiceWithCredentials creates a payment service with dynamic credential support
+func NewPaymentServiceWithCredentials(
+	repo *repository.PaymentRepository,
+	credentialsService *PaymentCredentialsService,
+	notificationClient *clients.NotificationClient,
+	tenantClient *clients.TenantClient,
+) *PaymentService {
+	useDynamic := os.Getenv("USE_DYNAMIC_CREDENTIALS") == "true"
+	return &PaymentService{
+		repo:               repo,
+		config:             loadPaymentConfigFromEnv(), // Keep as fallback
+		credentialsService: credentialsService,
+		notificationClient: notificationClient,
+		tenantClient:       tenantClient,
+		useDynamicCreds:    useDynamic,
 	}
 }
 
@@ -126,6 +149,59 @@ func (s *PaymentService) getDefaultGatewayConfig(gatewayType models.GatewayType)
 	}
 }
 
+// applyDynamicCredentials applies tenant/vendor-specific credentials from GCP Secret Manager
+// This is the preferred method for multi-tenant credential management
+func (s *PaymentService) applyDynamicCredentials(ctx context.Context, config *models.PaymentGatewayConfig, tenantID, vendorID string) error {
+	if !s.useDynamicCreds || s.credentialsService == nil {
+		// Fall back to env-based credentials
+		s.applyEnvCredentials(config)
+		return nil
+	}
+
+	switch config.GatewayType {
+	case models.GatewayStripe:
+		creds, err := s.credentialsService.GetStripeCredentials(ctx, tenantID, vendorID)
+		if err != nil {
+			// Log warning but don't fail - fall back to env credentials
+			fmt.Printf("[PaymentService] Dynamic credentials not available for Stripe (tenant=%s, vendor=%s): %v, using fallback\n", tenantID, vendorID, err)
+			s.applyEnvCredentials(config)
+			return nil
+		}
+		config.APIKeySecret = creds.APIKey
+		if creds.WebhookSecret != "" {
+			config.WebhookSecret = creds.WebhookSecret
+		}
+		// Handle Stripe Connect - get connected account ID if available
+		if connectedID, ok := creds.Extra["connected_account_id"]; ok && connectedID != "" {
+			config.MerchantAccountID = connectedID
+		}
+		fmt.Printf("[PaymentService] ✓ Applied dynamic Stripe credentials (tenant=%s, vendor=%s)\n", tenantID, vendorID)
+
+	case models.GatewayRazorpay:
+		creds, err := s.credentialsService.GetRazorpayCredentials(ctx, tenantID, vendorID)
+		if err != nil {
+			fmt.Printf("[PaymentService] Dynamic credentials not available for Razorpay (tenant=%s, vendor=%s): %v, using fallback\n", tenantID, vendorID, err)
+			s.applyEnvCredentials(config)
+			return nil
+		}
+		config.APIKeyPublic = creds.APIKey
+		config.APIKeySecret = creds.APISecret
+		if creds.WebhookSecret != "" {
+			config.WebhookSecret = creds.WebhookSecret
+		}
+		fmt.Printf("[PaymentService] ✓ Applied dynamic Razorpay credentials (tenant=%s, vendor=%s)\n", tenantID, vendorID)
+
+	case models.GatewayPayPal:
+		// PayPal not yet implemented in dynamic credentials
+		s.applyEnvCredentials(config)
+
+	default:
+		s.applyEnvCredentials(config)
+	}
+
+	return nil
+}
+
 // applyEnvCredentials overrides database credentials with environment variables
 // This ensures API keys from sealed secrets take precedence over any DB values
 func (s *PaymentService) applyEnvCredentials(config *models.PaymentGatewayConfig) {
@@ -152,6 +228,14 @@ func (s *PaymentService) applyEnvCredentials(config *models.PaymentGatewayConfig
 
 // CreatePaymentIntent creates a payment intent
 func (s *PaymentService) CreatePaymentIntent(ctx context.Context, req models.CreatePaymentIntentRequest) (*models.PaymentIntentResponse, error) {
+	// Extract vendor ID from metadata if present (for multi-vendor marketplaces)
+	vendorID := ""
+	if req.Metadata != nil {
+		if vid, ok := req.Metadata["vendor_id"]; ok {
+			vendorID = vid
+		}
+	}
+
 	// Get gateway configuration from DB (for non-sensitive settings like enabled, test mode, etc.)
 	gatewayConfig, err := s.repo.GetGatewayConfigByType(ctx, req.TenantID, req.GatewayType)
 	if err != nil {
@@ -166,9 +250,11 @@ func (s *PaymentService) CreatePaymentIntent(ctx context.Context, req models.Cre
 		}
 	}
 
-	// Override DB credentials with environment variables (from sealed secrets)
-	// This ensures sensitive keys are never stored in the database
-	s.applyEnvCredentials(gatewayConfig)
+	// Apply credentials - prefer dynamic (GCP Secret Manager) over static (env vars)
+	// This enables multi-tenant credential isolation
+	if err := s.applyDynamicCredentials(ctx, gatewayConfig, req.TenantID, vendorID); err != nil {
+		return nil, fmt.Errorf("failed to load payment credentials: %w", err)
+	}
 
 	// Create payment transaction record
 	orderID, err := uuid.Parse(req.OrderID)
@@ -490,9 +576,22 @@ func (s *PaymentService) ConfirmPayment(ctx context.Context, req models.ConfirmP
 
 // confirmRazorpayPayment confirms a Razorpay payment
 func (s *PaymentService) confirmRazorpayPayment(ctx context.Context, payment *models.PaymentTransaction, config *models.PaymentGatewayConfig, req models.ConfirmPaymentRequest) (*models.PaymentTransaction, error) {
-	// Use env vars as fallback if config credentials are empty
+	// Extract vendor ID from payment metadata
+	vendorID := ""
+	if payment.Metadata != nil {
+		if vid, ok := payment.Metadata["vendor_id"].(string); ok {
+			vendorID = vid
+		}
+	}
+
+	// Apply dynamic credentials for this tenant/vendor
+	if err := s.applyDynamicCredentials(ctx, config, payment.TenantID, vendorID); err != nil {
+		return nil, fmt.Errorf("failed to load Razorpay credentials: %w", err)
+	}
+
 	keyID := config.APIKeyPublic
 	keySecret := config.APIKeySecret
+	// Final fallback to env vars if dynamic credentials not available
 	if keyID == "" {
 		keyID = os.Getenv("RAZORPAY_KEY_ID")
 	}
@@ -700,6 +799,19 @@ func (s *PaymentService) CreateRefund(ctx context.Context, paymentID uuid.UUID, 
 
 // processRazorpayRefund processes a Razorpay refund
 func (s *PaymentService) processRazorpayRefund(ctx context.Context, payment *models.PaymentTransaction, refund *models.RefundTransaction, config *models.PaymentGatewayConfig, req models.CreateRefundRequest) (*models.RefundResponse, error) {
+	// Extract vendor ID from payment metadata
+	vendorID := ""
+	if payment.Metadata != nil {
+		if vid, ok := payment.Metadata["vendor_id"].(string); ok {
+			vendorID = vid
+		}
+	}
+
+	// Apply dynamic credentials for this tenant/vendor
+	if err := s.applyDynamicCredentials(ctx, config, payment.TenantID, vendorID); err != nil {
+		return nil, fmt.Errorf("failed to load Razorpay credentials for refund: %w", err)
+	}
+
 	client := razorpay.NewClient(config.APIKeyPublic, config.APIKeySecret, config.IsTestMode)
 
 	refundReq := razorpay.RefundRequest{

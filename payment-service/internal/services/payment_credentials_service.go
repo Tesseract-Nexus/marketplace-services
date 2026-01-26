@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/Tesseract-Nexus/go-shared/secrets"
-	"github.com/Tesseract-Nexus/marketplace-services/payment-service/internal/clients"
 	"github.com/sirupsen/logrus"
+	"payment-service/internal/clients"
 )
 
 // PaymentCredentialsService manages payment provider credentials.

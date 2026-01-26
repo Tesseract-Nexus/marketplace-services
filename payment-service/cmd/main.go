@@ -102,8 +102,45 @@ func main() {
 	tenantClient := clients.NewTenantClient()
 	log.Println("✓ Notification client initialized")
 
+	// Initialize PaymentCredentialsService for dynamic multi-tenant credentials
+	var paymentCredentialsService *services.PaymentCredentialsService
+	useDynamicCreds := os.Getenv("USE_DYNAMIC_CREDENTIALS") == "true"
+	if useDynamicCreds {
+		credLogger := logrus.New()
+		credLogger.SetFormatter(&logrus.JSONFormatter{})
+		credLogger.SetLevel(logrus.InfoLevel)
+
+		credCtx, credCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer credCancel()
+
+		credConfig := services.PaymentCredentialsConfig{
+			GCPProjectID:         os.Getenv("GCP_PROJECT_ID"),
+			Environment:          cfg.Environment,
+			SecretProvisionerURL: os.Getenv("SECRET_PROVISIONER_URL"),
+			Logger:               logrus.NewEntry(credLogger).WithField("service", "payment-credentials"),
+		}
+
+		var err error
+		paymentCredentialsService, err = services.NewPaymentCredentialsService(credCtx, credConfig)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize PaymentCredentialsService: %v (falling back to static credentials)", err)
+		} else {
+			defer paymentCredentialsService.Close()
+			log.Println("✓ PaymentCredentialsService initialized (dynamic multi-tenant credentials enabled)")
+		}
+	} else {
+		log.Println("Dynamic credentials disabled (USE_DYNAMIC_CREDENTIALS != true)")
+	}
+
 	// Initialize services
-	paymentService := services.NewPaymentService(paymentRepo, notificationClient, tenantClient)
+	var paymentService *services.PaymentService
+	if paymentCredentialsService != nil {
+		paymentService = services.NewPaymentServiceWithCredentials(paymentRepo, paymentCredentialsService, notificationClient, tenantClient)
+		log.Println("✓ PaymentService initialized with dynamic credentials")
+	} else {
+		paymentService = services.NewPaymentService(paymentRepo, notificationClient, tenantClient)
+		log.Println("✓ PaymentService initialized with static credentials")
+	}
 	webhookService := services.NewWebhookService(paymentRepo, notificationClient, tenantClient)
 	platformFeeService := services.NewPlatformFeeService(db, paymentRepo)
 	gatewaySelectorService := services.NewGatewaySelectorService(db, paymentRepo, gatewayFactory)
@@ -122,6 +159,13 @@ func main() {
 	gatewayHandler := handlers.NewGatewayHandler(gatewaySelectorService, platformFeeService)
 	approvalGatewayHandler := handlers.NewApprovalGatewayHandler(paymentRepo, gatewaySelectorService, approvalClient)
 	adBillingHandler := handlers.NewAdBillingHandler(adBillingService)
+
+	// Initialize credentials handler (only if credentials service is available)
+	var credentialsHandler *handlers.CredentialsHandler
+	if paymentCredentialsService != nil {
+		credentialsHandler = handlers.NewCredentialsHandler(paymentCredentialsService)
+		log.Println("✓ CredentialsHandler initialized")
+	}
 
 	// Initialize RBAC middleware
 	staffServiceURL := os.Getenv("STAFF_SERVICE_URL")
@@ -176,7 +220,7 @@ func main() {
 	}
 
 	// Setup router
-	router := setupRouter(paymentHandler, webhookHandler, gatewayHandler, approvalGatewayHandler, adBillingHandler, rbacMiddleware)
+	router := setupRouter(paymentHandler, webhookHandler, gatewayHandler, approvalGatewayHandler, adBillingHandler, credentialsHandler, rbacMiddleware)
 
 	// Start server
 	log.Printf("Payment Service starting on port %s (env: %s)", cfg.Port, cfg.Environment)
@@ -213,7 +257,7 @@ func connectDatabase(databaseURL string) (*gorm.DB, error) {
 }
 
 // setupRouter configures the HTTP router
-func setupRouter(paymentHandler *handlers.PaymentHandler, webhookHandler *handlers.WebhookHandler, gatewayHandler *handlers.GatewayHandler, approvalGatewayHandler *handlers.ApprovalGatewayHandler, adBillingHandler *handlers.AdBillingHandler, rbacMw *rbac.Middleware) *gin.Engine {
+func setupRouter(paymentHandler *handlers.PaymentHandler, webhookHandler *handlers.WebhookHandler, gatewayHandler *handlers.GatewayHandler, approvalGatewayHandler *handlers.ApprovalGatewayHandler, adBillingHandler *handlers.AdBillingHandler, credentialsHandler *handlers.CredentialsHandler, rbacMw *rbac.Middleware) *gin.Engine {
 	router := gin.Default()
 
 	// Initialize rate limiters
@@ -376,6 +420,42 @@ func setupRouter(paymentHandler *handlers.PaymentHandler, webhookHandler *handle
 
 			// Revenue reporting - requires ads:revenue:view permission (platform admin)
 			adBilling.GET("/revenue", rbacMw.RequirePermission(rbac.PermissionAdsRevenueView), adBillingHandler.GetTenantAdRevenue)
+		}
+
+		// Admin Credentials Management endpoints (only if credentials handler is available)
+		if credentialsHandler != nil {
+			adminCreds := v1.Group("/admin/credentials")
+			{
+				// Provision new credentials - requires payments:gateway:manage permission
+				adminCreds.POST("/provision",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayManage),
+					credentialsHandler.ProvisionCredentials)
+
+				// List configured providers - requires payments:gateway:read permission
+				adminCreds.GET("/providers",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayRead),
+					credentialsHandler.ListConfiguredProviders)
+
+				// Check provider configuration status - requires payments:gateway:read permission
+				adminCreds.GET("/providers/:provider/status",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayRead),
+					credentialsHandler.CheckProviderStatus)
+
+				// Get credentials metadata (not values) - requires payments:gateway:read permission
+				adminCreds.GET("/metadata",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayRead),
+					credentialsHandler.GetCredentialsMetadata)
+
+				// Test credentials - requires payments:gateway:manage permission
+				adminCreds.POST("/test",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayManage),
+					credentialsHandler.TestCredentials)
+
+				// Invalidate credentials cache - requires payments:gateway:manage permission
+				adminCreds.POST("/cache/invalidate",
+					rbacMw.RequirePermission(rbac.PermissionPaymentsGatewayManage),
+					credentialsHandler.InvalidateCache)
+			}
 		}
 	}
 

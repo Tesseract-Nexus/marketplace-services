@@ -3,9 +3,17 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+// Payment credential errors
+var (
+	ErrCredentialsNotConfigured = errors.New("payment credentials not configured")
+	ErrInvalidProvider          = errors.New("invalid payment provider")
+	ErrCredentialsFetchFailed   = errors.New("failed to fetch payment credentials")
 )
 
 // GatewayType represents the payment gateway provider
