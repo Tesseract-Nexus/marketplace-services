@@ -189,12 +189,14 @@ func main() {
 	// Initialize services
 	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
+	paymentConfigService := services.NewPaymentConfigService(db)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)
 	returnHandler := handlers.NewReturnHandlers(returnService)
 	shippingHandler := handlers.NewShippingHandler(shippingMethodRepo)
 	approvalHandler := handlers.NewApprovalAwareHandler(orderService, orderRepo, approvalClient)
+	paymentConfigHandler := handlers.NewPaymentConfigHandler(paymentConfigService)
 
 	// Start approval event subscriber
 	approvalSubscriber, err = subscribers.NewApprovalSubscriber(orderService, approvalClient, logger)
@@ -210,7 +212,7 @@ func main() {
 	}
 
 	// Setup router
-	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, metrics, rbacMiddleware, logger)
+	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, metrics, rbacMiddleware, logger)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)
@@ -358,7 +360,7 @@ func migrateDatabase(db *gorm.DB) error {
 }
 
 // setupRouter configures the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
+func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -485,6 +487,27 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			shipping.PUT("/:id", rbacMw.RequirePermission("settings:shipping:manage"), shippingHandler.UpdateShippingMethod)
 			shipping.DELETE("/:id", rbacMw.RequirePermission("settings:shipping:manage"), shippingHandler.DeleteShippingMethod)
 		}
+
+		// Payment methods configuration
+		payments := api.Group("/payments")
+		{
+			// List available payment methods (with tenant config status)
+			payments.GET("/methods", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsView), paymentConfigHandler.ListPaymentMethods)
+
+			// Tenant payment configurations
+			payments.GET("/configs", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsView), paymentConfigHandler.GetPaymentConfigs)
+			payments.GET("/configs/enabled", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsView), paymentConfigHandler.GetEnabledPaymentMethods)
+			payments.GET("/configs/:code", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsView), paymentConfigHandler.GetPaymentConfig)
+
+			// Update configuration (requires config permission - owner only)
+			payments.PUT("/configs/:code", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsConfig), paymentConfigHandler.UpdatePaymentConfig)
+
+			// Enable/disable payment method (requires enable permission - owner + admin)
+			payments.POST("/configs/:code/enable", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsEnable), paymentConfigHandler.EnablePaymentMethod)
+
+			// Test connection (requires test permission - owner + admin)
+			payments.POST("/configs/:code/test", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsTest), paymentConfigHandler.TestPaymentConnection)
+		}
 	}
 
 	// =============================================================================
@@ -501,6 +524,12 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// If Authorization header present, customer ID extracted from JWT
 			// If no auth, customerId should be provided in request body (guest checkout)
 			storefrontOrders.POST("", orderHandler.CreateOrder)
+		}
+
+		// Payment methods for checkout - returns enabled methods for the tenant
+		storefrontPayments := storefront.Group("/payments")
+		{
+			storefrontPayments.GET("/methods", paymentConfigHandler.StorefrontGetPaymentMethods)
 		}
 	}
 
