@@ -438,6 +438,68 @@ func (s *GatewaySelectorService) applyCredentialsToConfig(config *models.Payment
 	}
 }
 
+// CreateGatewayConfig creates a gateway config, provisioning credentials to GCP Secret Manager if available
+// This should be used by handlers instead of directly calling repo.CreateGatewayConfig
+func (s *GatewaySelectorService) CreateGatewayConfig(ctx context.Context, config *models.PaymentGatewayConfig) error {
+	// If credentials service is available, provision credentials to GCP Secret Manager
+	if s.credentialsService != nil {
+		// Extract credentials from the config
+		credentials := s.extractCredentialsFromConfig(config)
+
+		if len(credentials) > 0 {
+			// Map credentials to the secret-provisioner expected format
+			secretsToProvision := s.mapCredentialsForProvider(string(config.GatewayType), credentials)
+
+			if len(secretsToProvision) > 0 {
+				// Provision credentials to GCP Secret Manager
+				_, err := s.credentialsService.ProvisionCredentials(
+					ctx,
+					config.TenantID,
+					config.TenantID, // actorID - using tenantID for admin actions
+					strings.ToLower(string(config.GatewayType)),
+					"", // vendorID - empty for tenant-level credentials
+					secretsToProvision,
+					false, // Don't validate during creation
+				)
+				if err != nil {
+					return fmt.Errorf("failed to provision credentials to GCP Secret Manager: %w", err)
+				}
+			}
+
+			// Clear credentials from config - they're now in GCP Secret Manager
+			config.APIKeyPublic = ""
+			config.APIKeySecret = ""
+			config.WebhookSecret = ""
+		}
+	}
+	// If no credentials service, credentials stay in config (legacy mode)
+
+	return s.repo.CreateGatewayConfig(ctx, config)
+}
+
+// extractCredentialsFromConfig extracts credentials from a config into a map
+func (s *GatewaySelectorService) extractCredentialsFromConfig(config *models.PaymentGatewayConfig) map[string]string {
+	credentials := make(map[string]string)
+
+	if config.APIKeyPublic != "" {
+		credentials["api_key_public"] = config.APIKeyPublic
+	}
+	if config.APIKeySecret != "" {
+		credentials["api_key_secret"] = config.APIKeySecret
+	}
+	if config.WebhookSecret != "" {
+		credentials["webhook_secret"] = config.WebhookSecret
+	}
+	if config.MerchantAccountID != "" {
+		credentials["merchant_account_id"] = config.MerchantAccountID
+	}
+	if config.PlatformAccountID != "" {
+		credentials["platform_account_id"] = config.PlatformAccountID
+	}
+
+	return credentials
+}
+
 // GetCountryGatewayMatrix returns a matrix of countries to gateways for a tenant
 func (s *GatewaySelectorService) GetCountryGatewayMatrix(ctx context.Context, tenantID string) (map[string][]GatewayOption, error) {
 	// Get all gateway configs for tenant

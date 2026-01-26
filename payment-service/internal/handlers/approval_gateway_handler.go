@@ -64,7 +64,8 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 	userPriority := c.GetInt("user_priority")
 	if userPriority >= clients.RequiredPriorityForGatewayConfig || !h.approvalEnabled {
 		// Execute directly - owner can create without approval
-		if err := h.repo.CreateGatewayConfig(c.Request.Context(), &config); err != nil {
+		// Use selectorService.CreateGatewayConfig to provision credentials to GCP Secret Manager
+		if err := h.selectorService.CreateGatewayConfig(c.Request.Context(), &config); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "Failed to create gateway config",
 				Message: err.Error(),
@@ -460,7 +461,19 @@ func (h *ApprovalGatewayHandler) HandleApprovalCallback(c *gin.Context) {
 			IsTestMode:  configData["is_test_mode"].(bool),
 		}
 
-		if err := h.repo.CreateGatewayConfig(c.Request.Context(), config); err != nil {
+		// Extract credentials if present in metadata
+		if apiKeyPublic, ok := configData["api_key_public"].(string); ok {
+			config.APIKeyPublic = apiKeyPublic
+		}
+		if apiKeySecret, ok := configData["api_key_secret"].(string); ok {
+			config.APIKeySecret = apiKeySecret
+		}
+		if webhookSecret, ok := configData["webhook_secret"].(string); ok {
+			config.WebhookSecret = webhookSecret
+		}
+
+		// Use selectorService.CreateGatewayConfig to provision credentials to GCP Secret Manager
+		if err := h.selectorService.CreateGatewayConfig(c.Request.Context(), config); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "Failed to execute approved gateway creation",
 				Message: err.Error(),
