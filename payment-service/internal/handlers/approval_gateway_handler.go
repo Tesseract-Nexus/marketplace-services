@@ -334,7 +334,7 @@ func (h *ApprovalGatewayHandler) DeleteGatewayConfigWithApproval(c *gin.Context)
 
 // CreateFromTemplateRequest is the request for creating gateway from template
 type CreateFromTemplateApprovalRequest struct {
-	Credentials map[string]string `json:"credentials" binding:"required"`
+	Credentials map[string]string `json:"credentials"`
 	IsTestMode  bool              `json:"isTestMode"`
 }
 
@@ -346,8 +346,17 @@ func (h *ApprovalGatewayHandler) CreateGatewayFromTemplateWithApproval(c *gin.Co
 	var req CreateFromTemplateApprovalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "Invalid request",
-			Message: err.Error(),
+			Error:   "Invalid request body",
+			Message: fmt.Sprintf("Failed to parse request: %v. Expected JSON with 'credentials' (map) and 'isTestMode' (bool)", err),
+		})
+		return
+	}
+
+	// Validate credentials are provided
+	if len(req.Credentials) == 0 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "Missing credentials",
+			Message: "Credentials are required. Please provide the gateway credentials as a map (e.g., {\"api_key_public\": \"...\", \"api_key_secret\": \"...\"})",
 		})
 		return
 	}
