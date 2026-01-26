@@ -261,21 +261,21 @@ func (s *PaymentConfigSubscriber) decryptAndApplyCredentials(config *models.Paym
 
 	// Apply credentials based on gateway type
 	switch config.GatewayType {
-	case models.GatewayTypeStripe:
+	case models.GatewayStripe:
 		config.APIKeyPublic = creds.StripePublishableKey
 		config.APIKeySecret = creds.StripeSecretKey
 		config.WebhookSecret = creds.StripeWebhookSecret
-	case models.GatewayTypePayPal:
+	case models.GatewayPayPal:
 		config.APIKeyPublic = creds.PayPalClientID
 		config.APIKeySecret = creds.PayPalClientSecret
-	case models.GatewayTypeRazorpay:
+	case models.GatewayRazorpay:
 		config.APIKeyPublic = creds.RazorpayKeyID
 		config.APIKeySecret = creds.RazorpayKeySecret
 		config.WebhookSecret = creds.RazorpayWebhookSecret
-	case models.GatewayTypeAfterpay:
+	case models.GatewayAfterpay:
 		config.APIKeyPublic = creds.AfterpayMerchantID
 		config.APIKeySecret = creds.AfterpaySecretKey
-	case models.GatewayTypeZip:
+	case models.GatewayZip:
 		config.APIKeyPublic = creds.ZipMerchantID
 		config.APIKeySecret = creds.ZipAPIKey
 	}
