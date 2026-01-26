@@ -16,9 +16,10 @@ import (
 
 // GatewaySelectorService handles gateway selection based on country and preferences
 type GatewaySelectorService struct {
-	db      *gorm.DB
-	repo    *repository.PaymentRepository
-	factory *gateway.GatewayFactory
+	db                 *gorm.DB
+	repo               *repository.PaymentRepository
+	factory            *gateway.GatewayFactory
+	credentialsService *PaymentCredentialsService
 }
 
 // NewGatewaySelectorService creates a new gateway selector service
@@ -27,6 +28,16 @@ func NewGatewaySelectorService(db *gorm.DB, repo *repository.PaymentRepository, 
 		db:      db,
 		repo:    repo,
 		factory: factory,
+	}
+}
+
+// NewGatewaySelectorServiceWithCredentials creates a gateway selector service with credentials support
+func NewGatewaySelectorServiceWithCredentials(db *gorm.DB, repo *repository.PaymentRepository, factory *gateway.GatewayFactory, credentialsService *PaymentCredentialsService) *GatewaySelectorService {
+	return &GatewaySelectorService{
+		db:                 db,
+		repo:               repo,
+		factory:            factory,
+		credentialsService: credentialsService,
 	}
 }
 
@@ -282,27 +293,115 @@ func (s *GatewaySelectorService) GetGatewayTemplate(ctx context.Context, gateway
 }
 
 // CreateGatewayFromTemplate creates a new gateway config from a template
+// If credentialsService is configured, credentials are stored in GCP Secret Manager
+// Otherwise, they fall back to database storage (legacy mode)
 func (s *GatewaySelectorService) CreateGatewayFromTemplate(ctx context.Context, tenantID string, gatewayType models.GatewayType, credentials map[string]string, isTestMode bool) (*models.PaymentGatewayConfig, error) {
 	template, err := s.GetGatewayTemplate(ctx, gatewayType)
 	if err != nil {
 		return nil, fmt.Errorf("gateway template not found: %w", err)
 	}
 
-	// Create config from template
+	// Create config from template - NO credentials in database when using GCP Secret Manager
 	config := &models.PaymentGatewayConfig{
-		ID:                     uuid.New(),
-		TenantID:               tenantID,
-		GatewayType:            gatewayType,
-		DisplayName:            template.DisplayName,
-		IsEnabled:              true,
-		IsTestMode:             isTestMode,
-		Priority:               10, // Default priority
-		SupportedCountries:     template.SupportedCountries,
+		ID:                      uuid.New(),
+		TenantID:                tenantID,
+		GatewayType:             gatewayType,
+		DisplayName:             template.DisplayName,
+		IsEnabled:               true,
+		IsTestMode:              isTestMode,
+		Priority:                10, // Default priority
+		SupportedCountries:      template.SupportedCountries,
 		SupportedPaymentMethods: template.SupportedPaymentMethods,
-		SupportsPlatformSplit:  template.SupportsPlatformSplit,
+		SupportsPlatformSplit:   template.SupportsPlatformSplit,
 	}
 
-	// Apply credentials - support multiple naming conventions
+	// If credentials service is available, provision secrets to GCP Secret Manager
+	if s.credentialsService != nil && len(credentials) > 0 {
+		// Map credentials to the secret-provisioner expected format
+		secretsToProvision := s.mapCredentialsForProvider(string(gatewayType), credentials)
+
+		if len(secretsToProvision) > 0 {
+			// Provision credentials to GCP Secret Manager
+			// Use tenantID as actorID for system-initiated provisioning
+			_, err := s.credentialsService.ProvisionCredentials(
+				ctx,
+				tenantID,
+				tenantID, // actorID - using tenantID for admin actions
+				strings.ToLower(string(gatewayType)),
+				"", // vendorID - empty for tenant-level credentials
+				secretsToProvision,
+				false, // Don't validate during creation (credentials might not be active yet)
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to provision credentials to GCP Secret Manager: %w", err)
+			}
+		}
+
+		// Store only non-sensitive metadata in database (no actual credentials)
+		// The credentials will be fetched from GCP at payment time
+	} else {
+		// Legacy mode: store credentials in database (less secure)
+		// This is only used if credentialsService is not configured
+		s.applyCredentialsToConfig(config, credentials)
+	}
+
+	if err := s.repo.CreateGatewayConfig(ctx, config); err != nil {
+		return nil, fmt.Errorf("failed to create gateway config: %w", err)
+	}
+
+	return config, nil
+}
+
+// mapCredentialsForProvider maps incoming credentials to the secret-provisioner expected format
+func (s *GatewaySelectorService) mapCredentialsForProvider(provider string, credentials map[string]string) map[string]string {
+	result := make(map[string]string)
+	provider = strings.ToLower(provider)
+
+	switch provider {
+	case "stripe":
+		if v, ok := credentials["api_key_public"]; ok && v != "" {
+			result["api_key"] = v // Stripe public key
+		}
+		if v, ok := credentials["api_key_secret"]; ok && v != "" {
+			result["api_key"] = v // Stripe secret key (overwrites public - secret is the main one)
+		}
+		if v, ok := credentials["webhook_secret"]; ok && v != "" {
+			result["webhook_secret"] = v
+		}
+
+	case "razorpay":
+		if v, ok := credentials["api_key_public"]; ok && v != "" {
+			result["key_id"] = v
+		}
+		if v, ok := credentials["api_key_secret"]; ok && v != "" {
+			result["key_secret"] = v
+		}
+		if v, ok := credentials["webhook_secret"]; ok && v != "" {
+			result["webhook_secret"] = v
+		}
+
+	case "paypal":
+		if v, ok := credentials["client_id"]; ok && v != "" {
+			result["client_id"] = v
+		}
+		if v, ok := credentials["client_secret"]; ok && v != "" {
+			result["client_secret"] = v
+		}
+
+	default:
+		// Generic mapping for other providers
+		for k, v := range credentials {
+			if v != "" {
+				result[k] = v
+			}
+		}
+	}
+
+	return result
+}
+
+// applyCredentialsToConfig applies credentials directly to config (legacy mode)
+func (s *GatewaySelectorService) applyCredentialsToConfig(config *models.PaymentGatewayConfig, credentials map[string]string) {
 	// api_key_public / api_key_secret (Stripe, Razorpay)
 	if apiKey, ok := credentials["api_key_public"]; ok {
 		config.APIKeyPublic = apiKey
@@ -337,12 +436,6 @@ func (s *GatewaySelectorService) CreateGatewayFromTemplate(ctx context.Context, 
 	if platformAccountID, ok := credentials["platform_account_id"]; ok {
 		config.PlatformAccountID = platformAccountID
 	}
-
-	if err := s.repo.CreateGatewayConfig(ctx, config); err != nil {
-		return nil, fmt.Errorf("failed to create gateway config: %w", err)
-	}
-
-	return config, nil
 }
 
 // GetCountryGatewayMatrix returns a matrix of countries to gateways for a tenant

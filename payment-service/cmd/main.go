@@ -144,7 +144,16 @@ func main() {
 	}
 	webhookService := services.NewWebhookService(paymentRepo, notificationClient, tenantClient)
 	platformFeeService := services.NewPlatformFeeService(db, paymentRepo)
-	gatewaySelectorService := services.NewGatewaySelectorService(db, paymentRepo, gatewayFactory)
+
+	// Initialize gateway selector service with credentials support for GCP Secret Manager
+	var gatewaySelectorService *services.GatewaySelectorService
+	if paymentCredentialsService != nil {
+		gatewaySelectorService = services.NewGatewaySelectorServiceWithCredentials(db, paymentRepo, gatewayFactory, paymentCredentialsService)
+		log.Println("✓ GatewaySelectorService initialized with GCP Secret Manager credentials")
+	} else {
+		gatewaySelectorService = services.NewGatewaySelectorService(db, paymentRepo, gatewayFactory)
+		log.Println("✓ GatewaySelectorService initialized (database credentials mode)")
+	}
 
 	// Initialize approval client
 	approvalClient := clients.NewApprovalClient()
