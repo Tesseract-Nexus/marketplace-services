@@ -455,7 +455,42 @@ func (s *GatewaySelectorService) CreateGatewayConfig(ctx context.Context, config
 	return s.repo.CreateGatewayConfig(ctx, config)
 }
 
+// CreateGatewayConfigWithDynamicCredentials creates a gateway config with explicit credentials map
+// This supports any provider with any credential field names (PhonePe, PayPal, Afterpay, etc.)
+func (s *GatewaySelectorService) CreateGatewayConfigWithDynamicCredentials(ctx context.Context, config *models.PaymentGatewayConfig, credentials map[string]string) error {
+	// If credentials service is available and credentials provided, provision to GCP Secret Manager
+	if s.credentialsService != nil && len(credentials) > 0 {
+		// Map credentials to the secret-provisioner expected format
+		secretsToProvision := s.mapCredentialsForProvider(string(config.GatewayType), credentials)
+
+		if len(secretsToProvision) > 0 {
+			// Provision credentials to GCP Secret Manager
+			_, err := s.credentialsService.ProvisionCredentials(
+				ctx,
+				config.TenantID,
+				config.TenantID, // actorID - using tenantID for admin actions
+				strings.ToLower(string(config.GatewayType)),
+				"", // vendorID - empty for tenant-level credentials
+				secretsToProvision,
+				false, // Don't validate during creation
+			)
+			if err != nil {
+				return fmt.Errorf("failed to provision credentials to GCP Secret Manager: %w", err)
+			}
+		}
+
+		// Clear any credentials from config - they're now in GCP Secret Manager
+		config.APIKeyPublic = ""
+		config.APIKeySecret = ""
+		config.WebhookSecret = ""
+	}
+	// If no credentials service, credentials stay in config (legacy mode) - but this is not recommended
+
+	return s.repo.CreateGatewayConfig(ctx, config)
+}
+
 // extractCredentialsFromConfig extracts credentials from a config into a map
+// This is for backwards compatibility with the legacy CreateGatewayConfig method
 func (s *GatewaySelectorService) extractCredentialsFromConfig(config *models.PaymentGatewayConfig) map[string]string {
 	credentials := make(map[string]string)
 

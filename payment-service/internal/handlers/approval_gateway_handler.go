@@ -60,16 +60,13 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 		return
 	}
 
-	// Transfer DTO to model, including credentials
+	// Transfer DTO to model (without credentials - they go to GCP Secret Manager)
 	config := models.PaymentGatewayConfig{
 		TenantID:              tenantID,
 		GatewayType:           req.GatewayType,
 		DisplayName:           req.DisplayName,
 		IsEnabled:             req.IsEnabled,
 		IsTestMode:            req.IsTestMode,
-		APIKeyPublic:          req.APIKeyPublic,
-		APIKeySecret:          req.APIKeySecret,
-		WebhookSecret:         req.WebhookSecret,
 		Config:                req.Config,
 		SupportsPayments:      req.SupportsPayments,
 		SupportsRefunds:       req.SupportsRefunds,
@@ -80,12 +77,16 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 		Description:           req.Description,
 	}
 
+	// Get all credentials from both legacy fields and dynamic map
+	// This supports any provider: Stripe, PayPal, PhonePe, Afterpay, etc.
+	credentials := req.GetAllCredentials()
+
 	// Check if user has owner priority (can bypass approval)
 	userPriority := c.GetInt("user_priority")
 	if userPriority >= clients.RequiredPriorityForGatewayConfig || !h.approvalEnabled {
 		// Execute directly - owner can create without approval
-		// Use selectorService.CreateGatewayConfig to provision credentials to GCP Secret Manager
-		if err := h.selectorService.CreateGatewayConfig(c.Request.Context(), &config); err != nil {
+		// Use CreateGatewayConfigWithDynamicCredentials to provision ALL credentials to GCP Secret Manager
+		if err := h.selectorService.CreateGatewayConfigWithDynamicCredentials(c.Request.Context(), &config, credentials); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "Failed to create gateway config",
 				Message: err.Error(),
@@ -114,14 +115,12 @@ func (h *ApprovalGatewayHandler) CreateGatewayConfigWithApproval(c *gin.Context)
 		EntityReference: fmt.Sprintf("%s Gateway", config.GatewayType),
 		Reason:          fmt.Sprintf("Request to add new payment gateway: %s", config.DisplayName),
 		Metadata: map[string]interface{}{
-			"gateway_type":   string(config.GatewayType),
-			"display_name":   config.DisplayName,
-			"is_test_mode":   config.IsTestMode,
-			"is_enabled":     config.IsEnabled,
-			"api_key_public": config.APIKeyPublic,
-			"api_key_secret": config.APIKeySecret,
-			"webhook_secret": config.WebhookSecret,
-			"config_json":    config,
+			"gateway_type": string(config.GatewayType),
+			"display_name": config.DisplayName,
+			"is_test_mode": config.IsTestMode,
+			"is_enabled":   config.IsEnabled,
+			"credentials":  credentials, // Store ALL credentials dynamically (works for any provider)
+			"config_json":  config,
 		},
 		RequiredPriority: clients.RequiredPriorityForGatewayConfig,
 		ExpiresInHours:   &expiresInHours,
@@ -484,19 +483,18 @@ func (h *ApprovalGatewayHandler) HandleApprovalCallback(c *gin.Context) {
 			IsTestMode:  configData["is_test_mode"].(bool),
 		}
 
-		// Extract credentials if present in metadata
-		if apiKeyPublic, ok := configData["api_key_public"].(string); ok {
-			config.APIKeyPublic = apiKeyPublic
-		}
-		if apiKeySecret, ok := configData["api_key_secret"].(string); ok {
-			config.APIKeySecret = apiKeySecret
-		}
-		if webhookSecret, ok := configData["webhook_secret"].(string); ok {
-			config.WebhookSecret = webhookSecret
+		// Extract dynamic credentials from metadata (supports any provider)
+		credentials := make(map[string]string)
+		if credMap, ok := approval.Metadata["credentials"].(map[string]interface{}); ok {
+			for k, v := range credMap {
+				if strVal, ok := v.(string); ok && strVal != "" {
+					credentials[k] = strVal
+				}
+			}
 		}
 
-		// Use selectorService.CreateGatewayConfig to provision credentials to GCP Secret Manager
-		if err := h.selectorService.CreateGatewayConfig(c.Request.Context(), config); err != nil {
+		// Use CreateGatewayConfigWithDynamicCredentials to provision ALL credentials to GCP Secret Manager
+		if err := h.selectorService.CreateGatewayConfigWithDynamicCredentials(c.Request.Context(), config, credentials); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Error:   "Failed to execute approved gateway creation",
 				Message: err.Error(),

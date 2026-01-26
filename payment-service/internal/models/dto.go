@@ -129,23 +129,63 @@ type PaymentMethodResponse struct {
 }
 
 // GatewayConfigRequest represents a request to create/update gateway config
+// Supports both legacy credential fields and dynamic credentials map for any provider
 type GatewayConfigRequest struct {
-	TenantID              string      `json:"tenantId" binding:"required"`
-	GatewayType           GatewayType `json:"gatewayType" binding:"required"`
-	DisplayName           string      `json:"displayName" binding:"required"`
-	IsEnabled             bool        `json:"isEnabled"`
-	IsTestMode            bool        `json:"isTestMode"`
-	APIKeyPublic          string      `json:"apiKeyPublic"`
-	APIKeySecret          string      `json:"apiKeySecret"`
-	WebhookSecret         string      `json:"webhookSecret"`
-	Config                JSONB       `json:"config"`
-	SupportsPayments      bool        `json:"supportsPayments"`
-	SupportsRefunds       bool        `json:"supportsRefunds"`
-	SupportsSubscriptions bool        `json:"supportsSubscriptions"`
-	MinimumAmount         float64     `json:"minimumAmount"`
-	MaximumAmount         float64     `json:"maximumAmount"`
-	Priority              int         `json:"priority"`
-	Description           string      `json:"description"`
+	TenantID              string            `json:"tenantId" binding:"required"`
+	GatewayType           GatewayType       `json:"gatewayType" binding:"required"`
+	DisplayName           string            `json:"displayName" binding:"required"`
+	IsEnabled             bool              `json:"isEnabled"`
+	IsTestMode            bool              `json:"isTestMode"`
+
+	// Legacy credential fields (for backwards compatibility with Stripe/Razorpay)
+	APIKeyPublic          string            `json:"apiKeyPublic"`
+	APIKeySecret          string            `json:"apiKeySecret"`
+	WebhookSecret         string            `json:"webhookSecret"`
+
+	// Dynamic credentials map - supports ANY provider's credential fields
+	// Examples:
+	//   PayPal:    {"client_id": "xxx", "client_secret": "yyy"}
+	//   PhonePe:   {"merchant_id": "xxx", "salt_key": "yyy", "salt_index": "zzz"}
+	//   Afterpay:  {"merchant_id": "xxx", "secret_key": "yyy"}
+	//   Zip:       {"merchant_id": "xxx", "api_key": "yyy"}
+	// The frontend should send credentials based on the gateway template's required_credentials
+	Credentials           map[string]string `json:"credentials"`
+
+	Config                JSONB             `json:"config"`
+	SupportsPayments      bool              `json:"supportsPayments"`
+	SupportsRefunds       bool              `json:"supportsRefunds"`
+	SupportsSubscriptions bool              `json:"supportsSubscriptions"`
+	MinimumAmount         float64           `json:"minimumAmount"`
+	MaximumAmount         float64           `json:"maximumAmount"`
+	Priority              int               `json:"priority"`
+	Description           string            `json:"description"`
+}
+
+// GetAllCredentials returns all credentials from both legacy fields and dynamic map
+// This ensures backwards compatibility while supporting new providers
+func (r *GatewayConfigRequest) GetAllCredentials() map[string]string {
+	creds := make(map[string]string)
+
+	// First, add dynamic credentials if provided
+	for k, v := range r.Credentials {
+		if v != "" {
+			creds[k] = v
+		}
+	}
+
+	// Then, add/override with legacy fields if provided (for backwards compatibility)
+	// This allows existing integrations to continue working
+	if r.APIKeyPublic != "" {
+		creds["api_key_public"] = r.APIKeyPublic
+	}
+	if r.APIKeySecret != "" {
+		creds["api_key_secret"] = r.APIKeySecret
+	}
+	if r.WebhookSecret != "" {
+		creds["webhook_secret"] = r.WebhookSecret
+	}
+
+	return creds
 }
 
 // GatewayConfigResponse represents a gateway configuration
