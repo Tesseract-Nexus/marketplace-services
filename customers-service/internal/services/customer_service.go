@@ -123,6 +123,57 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, req CreateCustomer
 	return customer, nil
 }
 
+// CreateFromEvent creates a customer record from an event without sending notifications.
+// This is used by the customer registration event subscriber to sync customers from tenant-service.
+// Since tenant-service already handles welcome/verification emails, we skip notifications here.
+func (s *CustomerService) CreateFromEvent(ctx context.Context, customer *models.Customer) error {
+	// Check if customer already exists by ID or email
+	existing, err := s.repo.GetByID(ctx, customer.TenantID, customer.ID)
+	if err == nil && existing != nil {
+		log.Printf("[CustomerService] Customer %s already exists, skipping create from event", customer.Email)
+		return nil
+	}
+
+	// Also check by email in case ID differs
+	existingByEmail, err := s.repo.GetByEmail(ctx, customer.TenantID, customer.Email)
+	if err == nil && existingByEmail != nil {
+		log.Printf("[CustomerService] Customer with email %s already exists, skipping create from event", customer.Email)
+		return nil
+	}
+
+	// Set defaults
+	if customer.Status == "" {
+		customer.Status = models.CustomerStatusActive
+	}
+	if customer.CustomerType == "" {
+		customer.CustomerType = models.CustomerTypeRetail
+	}
+
+	if err := s.repo.Create(ctx, customer); err != nil {
+		return fmt.Errorf("failed to create customer from event: %w", err)
+	}
+
+	log.Printf("[CustomerService] Created customer from event: %s (%s)", customer.Email, customer.ID)
+
+	// Evaluate dynamic segments for the new customer (non-blocking)
+	if s.segmentEvaluator != nil {
+		go func() {
+			evalCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := s.segmentEvaluator.EvaluateCustomerSegments(evalCtx, customer); err != nil {
+				log.Printf("[CustomerService] Failed to evaluate segments for customer from event: %v", err)
+			}
+		}()
+	}
+
+	return nil
+}
+
+// GetByID retrieves a customer by ID (alias for GetCustomer)
+func (s *CustomerService) GetByID(ctx context.Context, tenantID string, customerID uuid.UUID) (*models.Customer, error) {
+	return s.repo.GetByID(ctx, tenantID, customerID)
+}
+
 // GetCustomer retrieves a customer by ID
 func (s *CustomerService) GetCustomer(ctx context.Context, tenantID string, customerID uuid.UUID) (*models.Customer, error) {
 	return s.repo.GetByID(ctx, tenantID, customerID)

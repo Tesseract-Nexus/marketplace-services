@@ -131,6 +131,15 @@ func main() {
 		log.Println("✓ Verification event subscriber initialized")
 	}
 
+	// Initialize customer registration event subscriber
+	// This listens for customer.registered events from tenant-service to sync customer records
+	customerRegistrationSubscriber, err := events.NewCustomerRegistrationSubscriber(customerService)
+	if err != nil {
+		log.Printf("WARNING: Failed to initialize customer registration subscriber: %v (customer sync from tenant-service disabled)", err)
+	} else {
+		log.Println("✓ Customer registration event subscriber initialized")
+	}
+
 	// Initialize OpenTelemetry tracing
 	var tracerProvider *tracing.TracerProvider
 	var tracerErr error
@@ -409,6 +418,16 @@ func main() {
 			log.Printf("WARNING: Failed to start verification event subscriber: %v", err)
 		} else {
 			log.Println("✓ Verification event subscriber started (listening for email verifications)")
+		}
+	}
+
+	// Start customer registration event subscriber for tenant-service sync
+	if customerRegistrationSubscriber != nil {
+		ctx := context.Background()
+		if err := customerRegistrationSubscriber.Start(ctx); err != nil {
+			log.Printf("WARNING: Failed to start customer registration subscriber: %v", err)
+		} else {
+			log.Println("✓ Customer registration subscriber started (listening for customer.registered events)")
 		}
 	}
 
