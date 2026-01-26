@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"orders-service/internal/encryption"
+	"orders-service/internal/events"
 	"orders-service/internal/models"
 )
 
@@ -37,12 +39,16 @@ type PaymentConfigService interface {
 
 // paymentConfigServiceImpl implements PaymentConfigService
 type paymentConfigServiceImpl struct {
-	db *gorm.DB
+	db        *gorm.DB
+	publisher *events.Publisher
 }
 
 // NewPaymentConfigService creates a new payment config service
-func NewPaymentConfigService(db *gorm.DB) PaymentConfigService {
-	return &paymentConfigServiceImpl{db: db}
+func NewPaymentConfigService(db *gorm.DB, publisher *events.Publisher) PaymentConfigService {
+	return &paymentConfigServiceImpl{
+		db:        db,
+		publisher: publisher,
+	}
 }
 
 // GetAvailablePaymentMethods returns all payment methods available for a region
@@ -259,6 +265,9 @@ func (s *paymentConfigServiceImpl) UpdatePaymentConfig(tenantID, methodCode stri
 	// Load payment method relationship
 	config.PaymentMethod = method
 
+	// Publish event for payment-service sync
+	s.publishConfigUpdatedEvent(tenantID, &config, userID)
+
 	return &config, nil
 }
 
@@ -359,6 +368,9 @@ func (s *paymentConfigServiceImpl) TestPaymentConnection(tenantID, methodCode st
 		"success": testResult.Success,
 		"message": testResult.Message,
 	})
+
+	// Publish test event for payment-service sync
+	s.publishConfigTestedEvent(tenantID, config, testResult, userID)
 
 	return testResult, nil
 }
@@ -581,4 +593,84 @@ func (s *paymentConfigServiceImpl) testZipConnection(creds *models.PaymentCreden
 		Provider:   "Zip",
 		IsTestMode: isTestMode,
 	}
+}
+
+// ===== Event Publishing Helpers =====
+
+// mapPaymentMethodToGatewayType maps payment method codes to payment-service gateway types
+func mapPaymentMethodToGatewayType(methodCode string) string {
+	mapping := map[string]string{
+		"stripe":       "STRIPE",
+		"paypal":       "PAYPAL",
+		"razorpay":     "RAZORPAY",
+		"razorpay_upi": "RAZORPAY",
+		"afterpay":     "AFTERPAY",
+		"zip":          "ZIP",
+		"bank_transfer": "BANK_TRANSFER",
+		"cod":          "MANUAL",
+	}
+	if gatewayType, ok := mapping[methodCode]; ok {
+		return gatewayType
+	}
+	return "MANUAL"
+}
+
+// publishConfigUpdatedEvent publishes a payment config updated event
+func (s *paymentConfigServiceImpl) publishConfigUpdatedEvent(tenantID string, config *models.TenantPaymentConfig, userID string) {
+	if s.publisher == nil {
+		return
+	}
+
+	provider := ""
+	if config.PaymentMethod != nil {
+		provider = config.PaymentMethod.Provider
+	}
+
+	eventData := events.PaymentConfigEventData{
+		PaymentMethodCode:    config.PaymentMethodCode,
+		Provider:             provider,
+		GatewayType:          mapPaymentMethodToGatewayType(config.PaymentMethodCode),
+		IsEnabled:            config.IsEnabled,
+		IsTestMode:           config.IsTestMode,
+		CredentialsEncrypted: string(config.CredentialsEncrypted),
+		DisplayOrder:         config.DisplayOrder,
+		EnabledRegions:       config.EnabledRegions,
+		ChangedBy:            userID,
+	}
+
+	ctx := context.Background()
+	if config.IsEnabled {
+		s.publisher.PublishPaymentConfigEnabled(ctx, tenantID, eventData)
+	} else {
+		s.publisher.PublishPaymentConfigUpdated(ctx, tenantID, eventData)
+	}
+}
+
+// publishConfigTestedEvent publishes a payment config tested event
+func (s *paymentConfigServiceImpl) publishConfigTestedEvent(tenantID string, config *models.TenantPaymentConfig, testResult *models.TestPaymentConnectionResponse, userID string) {
+	if s.publisher == nil {
+		return
+	}
+
+	provider := ""
+	if config.PaymentMethod != nil {
+		provider = config.PaymentMethod.Provider
+	}
+
+	eventData := events.PaymentConfigEventData{
+		PaymentMethodCode:    config.PaymentMethodCode,
+		Provider:             provider,
+		GatewayType:          mapPaymentMethodToGatewayType(config.PaymentMethodCode),
+		IsEnabled:            config.IsEnabled,
+		IsTestMode:           config.IsTestMode,
+		CredentialsEncrypted: string(config.CredentialsEncrypted),
+		DisplayOrder:         config.DisplayOrder,
+		EnabledRegions:       config.EnabledRegions,
+		ChangedBy:            userID,
+		TestSuccess:          testResult.Success,
+		TestMessage:          testResult.Message,
+	}
+
+	ctx := context.Background()
+	s.publisher.PublishPaymentConfigTested(ctx, tenantID, eventData)
 }

@@ -189,7 +189,7 @@ func main() {
 	// Initialize services
 	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
-	paymentConfigService := services.NewPaymentConfigService(db)
+	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)

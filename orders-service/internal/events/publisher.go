@@ -42,6 +42,11 @@ func NewPublisher(logger *logrus.Logger) (*Publisher, error) {
 		logger.WithError(err).Warn("Failed to ensure orders stream (may already exist)")
 	}
 
+	// Ensure the payment config stream exists
+	if err := publisher.EnsureStream(ctx, events.StreamPaymentConfigs, []string{"payment_config.>"}); err != nil {
+		logger.WithError(err).Warn("Failed to ensure payment config stream (may already exist)")
+	}
+
 	return &Publisher{
 		publisher: publisher,
 		logger:    logger.WithField("component", "orders-events"),
@@ -222,6 +227,99 @@ func (p *Publisher) publish(ctx context.Context, event *events.OrderEvent) error
 			}).Info("Order event published successfully")
 		}
 	}()
+
+	return nil
+}
+
+// ===== Payment Config Events =====
+
+// PaymentConfigEventData contains the data for a payment config event
+type PaymentConfigEventData struct {
+	PaymentMethodCode    string
+	Provider             string
+	GatewayType          string
+	IsEnabled            bool
+	IsTestMode           bool
+	CredentialsEncrypted string
+	DisplayName          string
+	CheckoutMessage      string
+	DisplayOrder         int
+	EnabledRegions       []string
+	ChangedBy            string
+	ChangedByName        string
+	ChangedByIP          string
+	TestSuccess          bool
+	TestMessage          string
+	TestError            string
+}
+
+// PublishPaymentConfigUpdated publishes a payment_config.updated event
+func (p *Publisher) PublishPaymentConfigUpdated(ctx context.Context, tenantID string, data PaymentConfigEventData) error {
+	event := p.buildPaymentConfigEvent(events.PaymentConfigUpdated, tenantID, data)
+	return p.publishPaymentConfig(ctx, event)
+}
+
+// PublishPaymentConfigEnabled publishes a payment_config.enabled event
+func (p *Publisher) PublishPaymentConfigEnabled(ctx context.Context, tenantID string, data PaymentConfigEventData) error {
+	event := p.buildPaymentConfigEvent(events.PaymentConfigEnabled, tenantID, data)
+	return p.publishPaymentConfig(ctx, event)
+}
+
+// PublishPaymentConfigDisabled publishes a payment_config.disabled event
+func (p *Publisher) PublishPaymentConfigDisabled(ctx context.Context, tenantID string, data PaymentConfigEventData) error {
+	event := p.buildPaymentConfigEvent(events.PaymentConfigDisabled, tenantID, data)
+	return p.publishPaymentConfig(ctx, event)
+}
+
+// PublishPaymentConfigTested publishes a payment_config.tested event
+func (p *Publisher) PublishPaymentConfigTested(ctx context.Context, tenantID string, data PaymentConfigEventData) error {
+	event := p.buildPaymentConfigEvent(events.PaymentConfigTested, tenantID, data)
+	return p.publishPaymentConfig(ctx, event)
+}
+
+// buildPaymentConfigEvent creates a PaymentConfigEvent from the data
+func (p *Publisher) buildPaymentConfigEvent(eventType, tenantID string, data PaymentConfigEventData) *events.PaymentConfigEvent {
+	event := events.NewPaymentConfigEvent(eventType, tenantID)
+	event.SourceID = uuid.New().String()
+	event.PaymentMethodCode = data.PaymentMethodCode
+	event.Provider = data.Provider
+	event.GatewayType = data.GatewayType
+	event.IsEnabled = data.IsEnabled
+	event.IsTestMode = data.IsTestMode
+	event.CredentialsEncrypted = data.CredentialsEncrypted
+	event.DisplayName = data.DisplayName
+	event.CheckoutMessage = data.CheckoutMessage
+	event.DisplayOrder = data.DisplayOrder
+	event.EnabledRegions = data.EnabledRegions
+	event.ChangedBy = data.ChangedBy
+	event.ChangedByName = data.ChangedByName
+	event.ChangedByIP = data.ChangedByIP
+	event.TestSuccess = data.TestSuccess
+	event.TestMessage = data.TestMessage
+	event.TestError = data.TestError
+	return event
+}
+
+// publishPaymentConfig publishes a payment config event
+func (p *Publisher) publishPaymentConfig(ctx context.Context, event *events.PaymentConfigEvent) error {
+	// Publish synchronously for payment config changes (critical for sync)
+	pubCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := p.publisher.Publish(pubCtx, event); err != nil {
+		p.logger.WithFields(logrus.Fields{
+			"eventType":         event.EventType,
+			"paymentMethodCode": event.PaymentMethodCode,
+			"tenantID":          event.TenantID,
+		}).WithError(err).Error("Failed to publish payment config event")
+		return err
+	}
+
+	p.logger.WithFields(logrus.Fields{
+		"eventType":         event.EventType,
+		"paymentMethodCode": event.PaymentMethodCode,
+		"tenantID":          event.TenantID,
+	}).Info("Payment config event published successfully")
 
 	return nil
 }

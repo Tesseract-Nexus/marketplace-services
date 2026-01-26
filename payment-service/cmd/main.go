@@ -162,6 +162,19 @@ func main() {
 		log.Println("✓ Approval event subscriber started")
 	}
 
+	// Initialize payment config subscriber for syncing configs from orders-service
+	paymentConfigSubscriber, err := subscribers.NewPaymentConfigSubscriber(db, subscriberLogger)
+	if err != nil {
+		log.Printf("WARNING: Failed to initialize payment config subscriber: %v (payment config sync won't work)", err)
+	} else {
+		go func() {
+			if err := paymentConfigSubscriber.Start(context.Background()); err != nil {
+				log.Printf("WARNING: Payment config subscriber failed to start: %v", err)
+			}
+		}()
+		log.Println("✓ Payment config subscriber started (syncing from orders-service)")
+	}
+
 	// Setup router
 	router := setupRouter(paymentHandler, webhookHandler, gatewayHandler, approvalGatewayHandler, adBillingHandler, rbacMiddleware)
 
