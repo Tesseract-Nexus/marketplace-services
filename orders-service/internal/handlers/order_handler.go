@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"orders-service/internal/models"
 	"orders-service/internal/services"
 )
@@ -307,11 +308,15 @@ func (h *OrderHandler) ListOrders(c *gin.Context) {
 		return
 	}
 
-	// Get vendor ID for marketplace isolation (optional)
-	vendorID := getVendorID(c)
+	// Get vendor scope filter for marketplace isolation
+	// IMPORTANT: Use GetVendorScopeFilter which only returns vendor_id for vendor-scoped users
+	// Tenant-level admins (store_owner, store_admin) will get empty string = see all orders
+	// Vendor-level staff (vendor_owner, vendor_admin) will get their vendor_id = see only their orders
+	vendorScopeFilter := gosharedmw.GetVendorScopeFilter(c)
+	log.Printf("[Orders Handler] ListOrders - vendorScopeFilter: %q (empty = tenant-level access)", vendorScopeFilter)
 
 	filters := services.OrderListFilters{
-		VendorID: vendorID, // Vendor isolation for marketplace mode
+		VendorID: vendorScopeFilter, // Vendor isolation only for vendor-scoped users
 		Page:     1,
 		Limit:    20,
 	}

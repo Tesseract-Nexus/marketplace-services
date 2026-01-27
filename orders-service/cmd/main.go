@@ -407,6 +407,12 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		AllowLegacyHeaders: false,
 		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
+
+	// Vendor scope filter for marketplace mode
+	// Sets vendor_scope_filter for vendor-scoped users ONLY
+	// Tenant-level admins (store_owner, store_admin) get no filter = see all orders
+	// Vendor-level staff (vendor_owner, vendor_admin) get their vendor_id = see only their orders
+	api.Use(gosharedmw.VendorScopeFilter())
 	{
 		orders := api.Group("/orders")
 		{
