@@ -113,6 +113,9 @@ func (c *productsClient) CheckStock(items []StockCheckItem, tenantID string) (*S
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
+	// Mark this as an internal service call to bypass user-level RBAC
+	// This allows stock checks for guest checkout (no user authentication)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -153,6 +156,7 @@ func (c *productsClient) DeductInventory(items []InventoryItem, reason string, t
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -188,6 +192,7 @@ func (c *productsClient) RestoreInventory(items []InventoryItem, reason string, 
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -229,6 +234,7 @@ func (c *productsClient) DeductInventoryWithIdempotency(items []InventoryItem, r
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
 	req.Header.Set("X-Idempotency-Key", idempotencyKey)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -270,6 +276,7 @@ func (c *productsClient) RestoreInventoryWithIdempotency(items []InventoryItem, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
 	req.Header.Set("X-Idempotency-Key", idempotencyKey)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -295,6 +302,7 @@ func (c *productsClient) GetProduct(productID string, tenantID string) (*Product
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
+	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

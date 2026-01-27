@@ -213,7 +213,8 @@ func main() {
 			// Read operations - require products:read permission
 			products.GET("", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetProducts)
 			products.GET("/batch", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.BatchGetProducts)
-			products.GET("/:id", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetProduct)
+			// AllowInternal: Allows Orders Service to fetch product details for guest checkout
+			products.GET("/:id", rbacMw.RequirePermissionAllowInternal(rbac.PermissionProductsRead), productsHandler.GetProduct)
 			products.GET("/:id/variants", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetVariants)
 			products.GET("/:id/images", rbacMw.RequirePermission(rbac.PermissionProductsRead), documentHandler.GetProductImages)
 			products.GET("/analytics", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetAnalytics)
@@ -221,7 +222,8 @@ func main() {
 			products.GET("/trending", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetTrendingProducts)
 			products.GET("/categories/:categoryId", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.GetProductsByCategory)
 			products.POST("/search", rbacMw.RequirePermission(rbac.PermissionProductsRead), productsHandler.SearchProducts)
-			products.POST("/inventory/check", rbacMw.RequirePermission(rbac.PermissionInventoryRead), productsHandler.CheckStock)
+			// AllowInternal: Allows Orders Service to check stock for guest checkout
+			products.POST("/inventory/check", rbacMw.RequirePermissionAllowInternal(rbac.PermissionInventoryRead), productsHandler.CheckStock)
 
 			// Create operations - require products:create permission
 			products.POST("", rbacMw.RequirePermission(rbac.PermissionProductsCreate), productsHandler.CreateProduct)
@@ -257,8 +259,9 @@ func main() {
 			// Inventory operations - require inventory:update permission
 			products.PUT("/:id/inventory", rbacMw.RequirePermission(rbac.PermissionInventoryUpdate), productsHandler.UpdateInventory)
 			products.POST("/:id/inventory/adjustment", rbacMw.RequirePermission(rbac.PermissionInventoryAdjust), productsHandler.InventoryAdjustment)
-			products.POST("/inventory/bulk/deduct", rbacMw.RequirePermission(rbac.PermissionInventoryAdjust), productsHandler.BulkDeductInventory)
-			products.POST("/inventory/bulk/restore", rbacMw.RequirePermission(rbac.PermissionInventoryAdjust), productsHandler.BulkRestoreInventory)
+			// AllowInternal: Allows Orders Service to deduct/restore inventory for guest checkout
+			products.POST("/inventory/bulk/deduct", rbacMw.RequirePermissionAllowInternal(rbac.PermissionInventoryAdjust), productsHandler.BulkDeductInventory)
+			products.POST("/inventory/bulk/restore", rbacMw.RequirePermissionAllowInternal(rbac.PermissionInventoryAdjust), productsHandler.BulkRestoreInventory)
 
 			// Import/Export - require specific permissions
 			products.GET("/import/template", rbacMw.RequirePermission(rbac.PermissionProductsImport), importHandler.GetImportTemplate)
