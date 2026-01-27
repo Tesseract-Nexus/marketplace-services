@@ -35,7 +35,7 @@ type notificationClient struct {
 func NewNotificationClient() NotificationClient {
 	baseURL := os.Getenv("NOTIFICATION_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://notification-service.devtest.svc.cluster.local:8090"
+		baseURL = "http://notification-service.marketplace.svc.cluster.local:8090"
 	}
 
 	return &notificationClient{
