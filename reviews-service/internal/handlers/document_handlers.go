@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -218,9 +219,12 @@ func (h *DocumentHandler) UploadReviewMedia(c *gin.Context) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	// Add form fields - use default bucket for review media
+	// Add form fields - use marketplace public bucket for review media
 	if req.Bucket == "" {
-		req.Bucket = "tesseracthub-devtest-assets"
+		req.Bucket = os.Getenv("REVIEW_MEDIA_BUCKET")
+		if req.Bucket == "" {
+			req.Bucket = "marketplace-devtest-public-au"
+		}
 	}
 	writer.WriteField("bucket", req.Bucket)
 	writer.WriteField("isPublic", fmt.Sprintf("%t", req.IsPublic))
@@ -408,7 +412,11 @@ func (h *DocumentHandler) GetReviewMedia(c *gin.Context) {
 		return
 	}
 
-	bucket := c.DefaultQuery("bucket", "tesseracthub-devtest-assets")
+	defaultBucket := os.Getenv("REVIEW_MEDIA_BUCKET")
+	if defaultBucket == "" {
+		defaultBucket = "marketplace-devtest-public-au"
+	}
+	bucket := c.DefaultQuery("bucket", defaultBucket)
 	mediaType := c.Query("media_type")
 	limit := c.DefaultQuery("limit", "50")
 
