@@ -297,6 +297,19 @@ func setupRouter(shippingHandler *handlers.ShippingHandler, carrierConfigHandler
 
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(middleware.CORS())
+
+	// IstioAuth middleware - extracts JWT claims from x-jwt-claim-* headers
+	// This MUST come before TenantMiddleware and RBAC middleware
+	router.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
+		RequireAuth:        false, // Don't require auth for all routes (webhooks, health)
+		AllowLegacyHeaders: true,  // Allow X-Tenant-ID fallback during migration
+		SkipPaths: []string{
+			"/health",
+			"/webhooks/",
+		},
+	}))
+
+	// Tenant context middleware (reads from IstioAuth context or legacy headers)
 	router.Use(middleware.TenantMiddleware())
 	router.Use(middleware.ErrorHandler())
 
