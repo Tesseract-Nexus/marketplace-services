@@ -133,6 +133,10 @@ type ShippingCarrierConfig struct {
 	// Carrier-specific credentials (e.g., Shiprocket email/password, FedEx account number)
 	Credentials JSONB `gorm:"type:jsonb" json:"-"` // Never expose credentials in JSON
 
+	// Credential provider tracking (for GCP Secret Manager migration)
+	CredentialsProvisioned bool   `gorm:"default:false" json:"credentialsProvisioned"`
+	CredentialProvider     string `gorm:"type:varchar(50);default:'database'" json:"credentialProvider"`
+
 	// Configuration
 	Config JSONB `gorm:"type:jsonb" json:"config"`
 

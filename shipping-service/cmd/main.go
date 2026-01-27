@@ -113,15 +113,61 @@ func main() {
 	carrierConfigRepo := repository.NewCarrierConfigRepository(db, redisClient)
 	log.Println("Repositories initialized")
 
-	// Initialize carrier factory and selector service
+	// Initialize carrier factory
 	carrierFactory := carriers.NewCarrierFactory()
-	carrierSelectorService := services.NewCarrierSelectorService(
-		db,
-		carrierConfigRepo,
-		carrierFactory,
-		cfg,
-		legacyCarrierService,
-	)
+
+	// Initialize shipping credentials service (optional — uses GCP Secret Manager)
+	var shippingCredentialsService *services.ShippingCredentialsService
+	if os.Getenv("USE_DYNAMIC_CREDENTIALS") == "true" {
+		gcpProjectID := os.Getenv("GCP_PROJECT_ID")
+		secretProvisionerURL := os.Getenv("SECRET_PROVISIONER_URL")
+		environment := os.Getenv("ENVIRONMENT")
+		if environment == "" {
+			environment = "devtest"
+		}
+
+		if gcpProjectID != "" && secretProvisionerURL != "" {
+			credLogger := logrus.NewEntry(logrus.StandardLogger()).WithField("component", "shipping-credentials")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			credsSvc, err := services.NewShippingCredentialsService(ctx, services.ShippingCredentialsConfig{
+				GCPProjectID:         gcpProjectID,
+				Environment:          environment,
+				SecretProvisionerURL: secretProvisionerURL,
+				Logger:               credLogger,
+			})
+			cancel()
+			if err != nil {
+				log.Printf("WARNING: Failed to initialize shipping credentials service: %v (falling back to DB credentials)", err)
+			} else {
+				shippingCredentialsService = credsSvc
+				defer credsSvc.Close()
+				log.Println("✓ Shipping credentials service initialized (GCP Secret Manager)")
+			}
+		} else {
+			log.Println("WARNING: USE_DYNAMIC_CREDENTIALS=true but GCP_PROJECT_ID or SECRET_PROVISIONER_URL not set")
+		}
+	}
+
+	// Initialize carrier selector service (with or without credentials service)
+	var carrierSelectorService *services.CarrierSelectorService
+	if shippingCredentialsService != nil {
+		carrierSelectorService = services.NewCarrierSelectorServiceWithCredentials(
+			db,
+			carrierConfigRepo,
+			carrierFactory,
+			cfg,
+			legacyCarrierService,
+			shippingCredentialsService,
+		)
+	} else {
+		carrierSelectorService = services.NewCarrierSelectorService(
+			db,
+			carrierConfigRepo,
+			carrierFactory,
+			cfg,
+			legacyCarrierService,
+		)
+	}
 	log.Println("Carrier selector service initialized")
 
 	// Initialize shipping service with carrier selector for database-driven carrier selection

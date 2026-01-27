@@ -79,6 +79,96 @@ func (f *CarrierFactory) CreateCarrier(config *models.ShippingCarrierConfig) (Ca
 	return carrier, nil
 }
 
+// CreateCarrierWithCredentials creates a carrier instance using externally-provided credentials
+// (e.g., from GCP Secret Manager) instead of reading from the database model fields.
+func (f *CarrierFactory) CreateCarrierWithCredentials(config *models.ShippingCarrierConfig, creds map[string]string) (Carrier, error) {
+	if config == nil {
+		return nil, fmt.Errorf("carrier config is required")
+	}
+
+	// Build carrier config from external credentials
+	carrierCfg := CarrierConfig{
+		BaseURL:      config.BaseURL,
+		Enabled:      config.IsEnabled,
+		IsProduction: !config.IsTestMode,
+	}
+
+	// Map credential keys to CarrierConfig fields based on carrier type
+	switch config.CarrierType {
+	case models.CarrierShiprocket:
+		carrierCfg.APIKey = creds["api-email"]
+		carrierCfg.APISecret = creds["api-password"]
+	case models.CarrierDelhivery:
+		carrierCfg.APIKey = creds["api-token"]
+		if v, ok := creds["pickup-location"]; ok {
+			carrierCfg.APISecret = v
+		}
+	case models.CarrierFedEx, models.CarrierUPS:
+		carrierCfg.APIKey = creds["client-id"]
+		carrierCfg.APISecret = creds["client-secret"]
+	case models.CarrierDHL:
+		carrierCfg.APIKey = creds["api-key"]
+		carrierCfg.APISecret = creds["api-secret"]
+	case models.CarrierBlueDart:
+		carrierCfg.APIKey = creds["api-key"]
+		carrierCfg.APISecret = creds["license-key"]
+	default:
+		// Generic: try api-key / api-secret
+		if v, ok := creds["api-key"]; ok {
+			carrierCfg.APIKey = v
+		}
+		if v, ok := creds["api-secret"]; ok {
+			carrierCfg.APISecret = v
+		}
+	}
+
+	// Set default base URL if not set
+	if carrierCfg.BaseURL == "" {
+		carrierCfg.BaseURL = getDefaultBaseURL(config.CarrierType, config.IsTestMode)
+	}
+
+	// Generate cache key with "gcp" prefix to distinguish from DB-based carriers
+	cacheKey := fmt.Sprintf("gcp_%s_%s_%t", config.TenantID, config.CarrierType, config.IsTestMode)
+
+	// Create new carrier instance (don't cache GCP-credential carriers to ensure fresh creds)
+	var carrier Carrier
+	var err error
+
+	switch config.CarrierType {
+	case models.CarrierShiprocket:
+		carrier = NewShiprocketCarrier(carrierCfg)
+	case models.CarrierDelhivery:
+		carrier, err = NewDelhiveryCarrier(carrierCfg)
+	case models.CarrierBlueDart:
+		carrier, err = NewBlueDartCarrier(carrierCfg)
+	case models.CarrierDTDC:
+		carrier, err = NewDTDCCarrier(carrierCfg)
+	case models.CarrierShippo:
+		carrier, err = NewShippoCarrier(carrierCfg)
+	case models.CarrierShipEngine:
+		carrier, err = NewShipEngineCarrier(carrierCfg)
+	case models.CarrierFedEx:
+		carrier, err = NewFedExCarrier(carrierCfg)
+	case models.CarrierUPS:
+		carrier, err = NewUPSCarrier(carrierCfg)
+	case models.CarrierDHL:
+		carrier, err = NewDHLCarrier(carrierCfg)
+	default:
+		return nil, fmt.Errorf("unsupported carrier type: %s", config.CarrierType)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s carrier: %w", config.CarrierType, err)
+	}
+
+	// Cache the carrier instance
+	f.mu.Lock()
+	f.carriers[cacheKey] = carrier
+	f.mu.Unlock()
+
+	return carrier, nil
+}
+
 // CreateCarrierFromEnvConfig creates a carrier from environment configuration (legacy support)
 func (f *CarrierFactory) CreateCarrierFromEnvConfig(carrierType models.CarrierType, config CarrierConfig) (Carrier, error) {
 	cacheKey := fmt.Sprintf("env_%s_%t", carrierType, config.IsProduction)

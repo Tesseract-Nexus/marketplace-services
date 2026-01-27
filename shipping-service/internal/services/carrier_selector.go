@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Tesseract-Nexus/go-shared/secrets"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -25,6 +26,9 @@ type CarrierSelectorService struct {
 
 	// Legacy carrier service for backward compatibility
 	legacyService *CarrierService
+
+	// Dynamic credentials service (nil = DB mode, uses legacy credential storage)
+	credentialsService *ShippingCredentialsService
 }
 
 // NewCarrierSelectorService creates a new carrier selector service
@@ -41,6 +45,83 @@ func NewCarrierSelectorService(
 		factory:       factory,
 		envCfg:        envCfg,
 		legacyService: legacyService,
+	}
+}
+
+// NewCarrierSelectorServiceWithCredentials creates a carrier selector service with GCP credential support
+func NewCarrierSelectorServiceWithCredentials(
+	db *gorm.DB,
+	repo *repository.CarrierConfigRepository,
+	factory *carriers.CarrierFactory,
+	envCfg *config.Config,
+	legacyService *CarrierService,
+	credsSvc *ShippingCredentialsService,
+) *CarrierSelectorService {
+	return &CarrierSelectorService{
+		db:                 db,
+		repo:               repo,
+		factory:            factory,
+		envCfg:             envCfg,
+		legacyService:      legacyService,
+		credentialsService: credsSvc,
+	}
+}
+
+// createCarrierForConfig creates a carrier instance for the given config,
+// using GCP credentials if the config is provisioned and credentials service is available,
+// otherwise falling back to DB-stored credentials.
+func (s *CarrierSelectorService) createCarrierForConfig(ctx context.Context, cfg *models.ShippingCarrierConfig) (carriers.Carrier, error) {
+	if cfg.CredentialsProvisioned && s.credentialsService != nil {
+		creds, err := s.credentialsService.GetCredentials(ctx, cfg.TenantID, "", secrets.ShippingProvider(strings.ToLower(string(cfg.CarrierType))))
+		if err != nil {
+			log.Printf("Failed to get GCP credentials for %s (tenant=%s), falling back to DB: %v", cfg.CarrierType, cfg.TenantID, err)
+			return s.factory.CreateCarrier(cfg)
+		}
+		// Build creds map from CarrierCredentials
+		credsMap := make(map[string]string)
+		if creds.APIKey != "" {
+			credsMap[s.getPrimaryKeyName(cfg.CarrierType)] = creds.APIKey
+		}
+		if creds.APISecret != "" {
+			credsMap[s.getSecondaryKeyName(cfg.CarrierType)] = creds.APISecret
+		}
+		for k, v := range creds.Extra {
+			credsMap[k] = v
+		}
+		return s.factory.CreateCarrierWithCredentials(cfg, credsMap)
+	}
+	return s.factory.CreateCarrier(cfg)
+}
+
+// getPrimaryKeyName returns the primary credential key name for a carrier type
+func (s *CarrierSelectorService) getPrimaryKeyName(ct models.CarrierType) string {
+	switch ct {
+	case models.CarrierShiprocket:
+		return "api-email"
+	case models.CarrierDelhivery:
+		return "api-token"
+	case models.CarrierFedEx, models.CarrierUPS:
+		return "client-id"
+	default:
+		return "api-key"
+	}
+}
+
+// getSecondaryKeyName returns the secondary credential key name for a carrier type
+func (s *CarrierSelectorService) getSecondaryKeyName(ct models.CarrierType) string {
+	switch ct {
+	case models.CarrierShiprocket:
+		return "api-password"
+	case models.CarrierDelhivery:
+		return "pickup-location"
+	case models.CarrierFedEx, models.CarrierUPS:
+		return "client-secret"
+	case models.CarrierDHL:
+		return "api-secret"
+	case models.CarrierBlueDart:
+		return "license-key"
+	default:
+		return "api-secret"
 	}
 }
 
@@ -221,7 +302,7 @@ func (s *CarrierSelectorService) SelectCarrierForRoute(ctx context.Context, tena
 	if settings != nil && settings.PreferredCarrierType != "" {
 		for _, cfg := range matchingConfigs {
 			if string(cfg.CarrierType) == settings.PreferredCarrierType {
-				carrier, err := s.factory.CreateCarrier(&cfg)
+				carrier, err := s.createCarrierForConfig(ctx, &cfg)
 				if err != nil {
 					log.Printf("Failed to create preferred carrier %s: %v, trying fallback", cfg.CarrierType, err)
 					break // Try fallback
@@ -240,7 +321,7 @@ func (s *CarrierSelectorService) SelectCarrierForRoute(ctx context.Context, tena
 	if settings != nil && settings.FallbackCarrierType != "" && settings.FallbackCarrierType != settings.PreferredCarrierType {
 		for _, cfg := range matchingConfigs {
 			if string(cfg.CarrierType) == settings.FallbackCarrierType {
-				carrier, err := s.factory.CreateCarrier(&cfg)
+				carrier, err := s.createCarrierForConfig(ctx, &cfg)
 				if err != nil {
 					log.Printf("Failed to create fallback carrier %s: %v, trying remaining carriers", cfg.CarrierType, err)
 					break
@@ -267,7 +348,7 @@ func (s *CarrierSelectorService) SelectCarrierForRoute(ctx context.Context, tena
 			}
 		}
 
-		carrier, err := s.factory.CreateCarrier(&cfg)
+		carrier, err := s.createCarrierForConfig(ctx, &cfg)
 		if err != nil {
 			log.Printf("Failed to create carrier %s: %v", cfg.CarrierType, err)
 			continue
@@ -283,7 +364,7 @@ func (s *CarrierSelectorService) SelectCarrierForRoute(ctx context.Context, tena
 
 // GetCarrierInstance returns an instantiated carrier for the given config
 func (s *CarrierSelectorService) GetCarrierInstance(ctx context.Context, config *models.ShippingCarrierConfig) (carriers.Carrier, error) {
-	return s.factory.CreateCarrier(config)
+	return s.createCarrierForConfig(ctx, config)
 }
 
 // GetCarrierByType returns a carrier instance by type for a tenant
@@ -292,7 +373,7 @@ func (s *CarrierSelectorService) GetCarrierByType(ctx context.Context, tenantID 
 	if err != nil {
 		return nil, fmt.Errorf("carrier config not found: %w", err)
 	}
-	return s.factory.CreateCarrier(config)
+	return s.createCarrierForConfig(ctx, config)
 }
 
 // GetRatesFromAllCarriers gets rates from all available carriers for a route
@@ -387,7 +468,7 @@ func (s *CarrierSelectorService) GetRatesFromAllCarriers(ctx context.Context, te
 			continue
 		}
 
-		carrier, err := s.factory.CreateCarrier(&cfg)
+		carrier, err := s.createCarrierForConfig(ctx, &cfg)
 		if err != nil {
 			log.Printf("Failed to create carrier %s: %v", cfg.CarrierType, err)
 			continue
@@ -506,24 +587,45 @@ func (s *CarrierSelectorService) CreateCarrierFromTemplate(ctx context.Context, 
 		Credentials:        models.JSONB{},
 	}
 
-	// Apply credentials
-	for key, value := range credentials {
-		switch key {
-		case "email":
-			config.Credentials["email"] = value
-		case "password":
-			config.Credentials["password"] = value
-		case "api_key", "api_token":
-			config.APIKeyPublic = value
-		case "api_secret", "api_key_secret":
-			config.APIKeySecret = value
-		case "webhook_secret":
-			config.WebhookSecret = value
-		case "base_url":
-			config.BaseURL = value
-		default:
-			// Store in credentials JSONB
-			config.Credentials[key] = value
+	// If credentials service is available, provision via GCP Secret Manager
+	if s.credentialsService != nil {
+		// Provision credentials to GCP
+		_, provErr := s.credentialsService.ProvisionCredentials(
+			ctx, tenantID, "system", // actorID - system for template creation
+			strings.ToLower(string(carrierType)),
+			"", // vendorID - tenant-level
+			credentials,
+			false, // validate later via test-connection
+		)
+		if provErr != nil {
+			log.Printf("Failed to provision credentials to GCP for %s: %v, falling back to DB storage", carrierType, provErr)
+			// Fall through to DB storage
+		} else {
+			config.CredentialsProvisioned = true
+			config.CredentialProvider = "gcp-secret-manager"
+			config.Credentials = models.JSONB{"provisioned": true}
+		}
+	}
+
+	// If not provisioned to GCP, store credentials in DB (legacy behavior)
+	if !config.CredentialsProvisioned {
+		for key, value := range credentials {
+			switch key {
+			case "email":
+				config.Credentials["email"] = value
+			case "password":
+				config.Credentials["password"] = value
+			case "api_key", "api_token":
+				config.APIKeyPublic = value
+			case "api_secret", "api_key_secret":
+				config.APIKeySecret = value
+			case "webhook_secret":
+				config.WebhookSecret = value
+			case "base_url":
+				config.BaseURL = value
+			default:
+				config.Credentials[key] = value
+			}
 		}
 	}
 
@@ -550,7 +652,7 @@ func (s *CarrierSelectorService) TestCarrierConnection(ctx context.Context, conf
 
 	// Create carrier instance (bypass cache to ensure fresh connection)
 	s.factory.InvalidateCache(config.TenantID, config.CarrierType, config.IsTestMode)
-	carrier, err := s.factory.CreateCarrier(config)
+	carrier, err := s.createCarrierForConfig(ctx, config)
 	if err != nil {
 		return &models.ValidateCredentialsResponse{
 			Valid:   false,
@@ -881,7 +983,7 @@ func (s *CarrierSelectorService) SyncWarehouseToCarriers(ctx context.Context, te
 	}
 
 	// Create Shiprocket carrier instance
-	shiprocketCarrier, err := s.factory.CreateCarrier(shiprocketConfig)
+	shiprocketCarrier, err := s.createCarrierForConfig(ctx, shiprocketConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create Shiprocket carrier: %w", err)
 	}
