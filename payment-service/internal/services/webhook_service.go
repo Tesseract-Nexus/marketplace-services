@@ -471,6 +471,7 @@ func (s *WebhookService) notifyOrderPaymentStatus(orderID, tenantID, paymentID, 
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", tenantID)
+	req.Header.Set("X-Internal-Service", "payment-service")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
