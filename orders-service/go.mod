@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	cloud.google.com/go/secretmanager v1.11.4
-	github.com/Tesseract-Nexus/go-shared v0.2.5
+	github.com/Tesseract-Nexus/go-shared v0.2.9-0.20260127011059-4e2b26829626
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
