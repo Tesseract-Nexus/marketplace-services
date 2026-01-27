@@ -159,10 +159,11 @@ type orderService struct {
 	tenantClient       clients.TenantClient
 	shippingClient     clients.ShippingClient
 	eventsPublisher    *events.Publisher // Optional: for real-time admin notifications via NATS
+	guestTokenService  *GuestTokenService
 }
 
 // NewOrderService creates a new order service
-func NewOrderService(orderRepo repository.OrderRepository, productsClient clients.ProductsClient, taxClient clients.TaxClient, customersClient clients.CustomersClient, notificationClient clients.NotificationClient, tenantClient clients.TenantClient, shippingClient clients.ShippingClient, eventsPublisher *events.Publisher) OrderService {
+func NewOrderService(orderRepo repository.OrderRepository, productsClient clients.ProductsClient, taxClient clients.TaxClient, customersClient clients.CustomersClient, notificationClient clients.NotificationClient, tenantClient clients.TenantClient, shippingClient clients.ShippingClient, eventsPublisher *events.Publisher, guestTokenService *GuestTokenService) OrderService {
 	return &orderService{
 		orderRepo:          orderRepo,
 		productsClient:     productsClient,
@@ -172,6 +173,7 @@ func NewOrderService(orderRepo repository.OrderRepository, productsClient client
 		tenantClient:       tenantClient,
 		shippingClient:     shippingClient,
 		eventsPublisher:    eventsPublisher,
+		guestTokenService:  guestTokenService,
 	}
 }
 
@@ -692,6 +694,7 @@ func (s *orderService) UpdatePaymentStatus(orderID uuid.UUID, paymentStatus mode
 				defer cancel()
 
 				notification := s.buildOrderNotification(ctx, updatedOrder, tenantID)
+
 				if err := s.notificationClient.SendOrderConfirmation(ctx, notification); err != nil {
 					fmt.Printf("WARNING: Failed to send order confirmation email: %v\n", err)
 				}
@@ -1393,6 +1396,16 @@ func (s *orderService) buildOrderNotification(ctx context.Context, order *models
 		notification.TrackingURL = s.tenantClient.BuildOrderTrackingURL(ctx, tenantID, order.ID.String())
 		notification.ReviewURL = s.tenantClient.BuildReviewURL(ctx, tenantID, order.ID.String())
 		notification.ShopURL = s.tenantClient.BuildShopURL(ctx, tenantID)
+
+		// Override OrderDetailsURL with guest order URL so all emails
+		// (confirmation, shipped, delivered, cancelled, refunded) contain
+		// a token-based link that works without authentication.
+		if s.guestTokenService != nil && order.Customer != nil && order.Customer.Email != "" {
+			token := s.guestTokenService.GenerateToken(
+				order.ID.String(), order.OrderNumber, order.Customer.Email)
+			notification.OrderDetailsURL = s.tenantClient.BuildGuestOrderURL(
+				ctx, tenantID, order.OrderNumber, token, order.Customer.Email)
+		}
 	}
 
 	// Build order items

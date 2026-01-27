@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -22,6 +23,8 @@ type TenantClient interface {
 	BuildReviewURL(ctx context.Context, tenantID, orderID string) string
 	// BuildShopURL builds the storefront URL for the shop
 	BuildShopURL(ctx context.Context, tenantID string) string
+	// BuildGuestOrderURL builds the storefront URL for guest order lookup with token
+	BuildGuestOrderURL(ctx context.Context, tenantID, orderNumber, guestToken, email string) string
 }
 
 // TenantInfo holds tenant information
@@ -152,4 +155,11 @@ func (c *tenantClient) BuildReviewURL(ctx context.Context, tenantID, orderID str
 func (c *tenantClient) BuildShopURL(ctx context.Context, tenantID string) string {
 	slug := c.GetTenantSlug(ctx, tenantID)
 	return fmt.Sprintf("https://%s.%s", slug, c.baseDomain)
+}
+
+// BuildGuestOrderURL builds the storefront URL for guest order lookup with token
+func (c *tenantClient) BuildGuestOrderURL(ctx context.Context, tenantID, orderNumber, guestToken, email string) string {
+	slug := c.GetTenantSlug(ctx, tenantID)
+	return fmt.Sprintf("https://%s.%s/orders/guest?token=%s&order=%s&email=%s",
+		slug, c.baseDomain, url.QueryEscape(guestToken), url.QueryEscape(orderNumber), url.QueryEscape(email))
 }

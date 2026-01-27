@@ -186,8 +186,12 @@ func main() {
 	rbacMiddleware := rbac.NewMiddlewareWithURL(staffServiceURL, nil)
 	log.Println("✓ RBAC middleware initialized")
 
+	// Initialize guest token service for guest order access
+	guestTokenSvc := services.NewGuestTokenService()
+	log.Println("Guest token service initialized for guest order access")
+
 	// Initialize services
-	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher)
+	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
 	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
 
@@ -211,8 +215,11 @@ func main() {
 		log.Println("Approval event subscriber started for processing approved refunds/cancellations")
 	}
 
+	// Initialize guest order handler for public endpoints
+	guestOrderHandler := handlers.NewGuestOrderHandler(orderService, guestTokenSvc)
+
 	// Setup router
-	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, metrics, rbacMiddleware, logger)
+	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, guestOrderHandler, metrics, rbacMiddleware, logger)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)
@@ -360,7 +367,7 @@ func migrateDatabase(db *gorm.DB) error {
 }
 
 // setupRouter configures the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
+func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, guestOrderHandler *handlers.GuestOrderHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -551,6 +558,17 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		customerStorefront.GET("/orders/:id/tracking", orderHandler.GetOrderTracking)
 	}
 	log.Println("✓ Public storefront endpoints initialized")
+
+	// =============================================================================
+	// PUBLIC GUEST ORDER ENDPOINTS (token-based auth, no JWT required)
+	// =============================================================================
+	publicAPI := router.Group("/api/v1/public")
+	publicAPI.Use(middleware.RequireTenantID())
+	{
+		publicAPI.GET("/orders/lookup", guestOrderHandler.LookupOrder)
+		publicAPI.POST("/orders/cancel", guestOrderHandler.CancelOrder)
+	}
+	log.Println("✓ Public guest order endpoints initialized")
 
 	return router
 }
