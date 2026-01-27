@@ -80,6 +80,11 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// Capture storefront host for building correct email URLs (supports custom domains)
+	if storefrontHost := c.GetHeader("X-Storefront-Host"); storefrontHost != "" {
+		req.StorefrontHost = storefrontHost
+	}
+
 	order, err := h.orderService.CreateOrder(req, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{

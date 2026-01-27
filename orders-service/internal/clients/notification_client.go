@@ -69,6 +69,7 @@ type OrderNotification struct {
 	OrderDetailsURL   string
 	ShopURL           string
 	ReviewURL         string
+	GuestCancelURL    string
 	Items             []OrderItem
 	Currency          string
 	Subtotal          string
@@ -279,6 +280,7 @@ func (c *notificationClient) buildNotificationRequest(order *OrderNotification) 
 			"orderDetailsUrl":    order.OrderDetailsURL,
 			"shopUrl":            order.ShopURL,
 			"reviewUrl":          order.ReviewURL,
+			"guestCancelUrl":     order.GuestCancelURL,
 			"items":              items,
 			"currency":           order.Currency,
 			"subtotal":           order.Subtotal,

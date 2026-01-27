@@ -143,6 +143,9 @@ type Order struct {
 	IsReverseCharge bool    `json:"isReverseCharge,omitempty" gorm:"default:false"`            // EU B2B reverse charge
 	CustomerVATNumber string `json:"customerVatNumber,omitempty" gorm:"type:varchar(50)"`     // Customer's VAT number
 
+	// Storefront host for building email URLs (custom domain or default subdomain)
+	StorefrontHost string `json:"storefrontHost,omitempty" gorm:"type:varchar(255)"`
+
 	// Relationships
 	Items     []OrderItem     `json:"items" gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`
 	Customer  *OrderCustomer  `json:"customer" gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`

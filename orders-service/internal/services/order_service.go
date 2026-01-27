@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +46,8 @@ type CreateOrderRequest struct {
 	Shipping   CreateOrderShippingRequest   `json:"shipping" binding:"required"`
 	Payment    CreateOrderPaymentRequest    `json:"payment" binding:"required"`
 	Discounts  []CreateOrderDiscountRequest `json:"discounts"`
-	Notes      string                       `json:"notes"`
+	Notes          string                       `json:"notes"`
+	StorefrontHost string                       `json:"storefrontHost,omitempty"` // Set from X-Storefront-Host header
 }
 
 type CreateOrderItemRequest struct {
@@ -276,6 +278,7 @@ func (s *orderService) CreateOrder(req CreateOrderRequest, tenantID string) (*mo
 		IsInterstate:      isInterstate,
 		VATAmount:         vatAmount,
 		IsReverseCharge:   isReverseCharge,
+		StorefrontHost:    req.StorefrontHost,
 	}
 
 	// Create order items
@@ -1390,22 +1393,41 @@ func (s *orderService) buildOrderNotification(ctx context.Context, order *models
 		notification.CustomerName = fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName)
 	}
 
-	// Build URLs using tenant client
-	if s.tenantClient != nil {
+	// Build URLs using storefront host (supports custom domains) or fallback to tenant client
+	storefrontBase := ""
+	if order.StorefrontHost != "" {
+		storefrontBase = "https://" + order.StorefrontHost
+	}
+
+	if storefrontBase != "" {
+		// Use the actual storefront host (custom domain or default subdomain)
+		notification.OrderDetailsURL = storefrontBase + "/account/orders/" + order.ID.String()
+		notification.TrackingURL = storefrontBase + "/account/orders/" + order.ID.String() + "/track"
+		notification.ReviewURL = storefrontBase + "/account/orders/" + order.ID.String() + "/review"
+		notification.ShopURL = storefrontBase
+	} else if s.tenantClient != nil {
+		// Fallback to tenant slug-based URL building
 		notification.OrderDetailsURL = s.tenantClient.BuildOrderURL(ctx, tenantID, order.ID.String())
 		notification.TrackingURL = s.tenantClient.BuildOrderTrackingURL(ctx, tenantID, order.ID.String())
 		notification.ReviewURL = s.tenantClient.BuildReviewURL(ctx, tenantID, order.ID.String())
 		notification.ShopURL = s.tenantClient.BuildShopURL(ctx, tenantID)
+	}
 
-		// Override OrderDetailsURL with guest order URL so all emails
-		// (confirmation, shipped, delivered, cancelled, refunded) contain
-		// a token-based link that works without authentication.
-		if s.guestTokenService != nil && order.Customer != nil && order.Customer.Email != "" {
-			token := s.guestTokenService.GenerateToken(
-				order.ID.String(), order.OrderNumber, order.Customer.Email)
+	// Override OrderDetailsURL with guest order URL so all emails
+	// (confirmation, shipped, delivered, cancelled, refunded) contain
+	// a token-based link that works without authentication.
+	if s.guestTokenService != nil && order.Customer != nil && order.Customer.Email != "" {
+		token := s.guestTokenService.GenerateToken(
+			order.ID.String(), order.OrderNumber, order.Customer.Email)
+		if storefrontBase != "" {
+			notification.OrderDetailsURL = fmt.Sprintf("%s/orders/guest?token=%s&order=%s&email=%s",
+				storefrontBase, url.QueryEscape(token), url.QueryEscape(order.OrderNumber), url.QueryEscape(order.Customer.Email))
+		} else if s.tenantClient != nil {
 			notification.OrderDetailsURL = s.tenantClient.BuildGuestOrderURL(
 				ctx, tenantID, order.OrderNumber, token, order.Customer.Email)
 		}
+		// Guest cancel URL is the same page (it has cancel functionality)
+		notification.GuestCancelURL = notification.OrderDetailsURL
 	}
 
 	// Build order items
