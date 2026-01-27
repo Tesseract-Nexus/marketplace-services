@@ -219,9 +219,9 @@ func (h *DocumentHandler) UploadReviewMedia(c *gin.Context) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	// Add form fields - use marketplace public bucket for review media
+	// Add form fields - use marketplace public bucket for review media (matches product/category upload pattern)
 	if req.Bucket == "" {
-		req.Bucket = os.Getenv("REVIEW_MEDIA_BUCKET")
+		req.Bucket = os.Getenv("STORAGE_PUBLIC_BUCKET")
 		if req.Bucket == "" {
 			req.Bucket = "marketplace-devtest-public-au"
 		}
@@ -412,7 +412,7 @@ func (h *DocumentHandler) GetReviewMedia(c *gin.Context) {
 		return
 	}
 
-	defaultBucket := os.Getenv("REVIEW_MEDIA_BUCKET")
+	defaultBucket := os.Getenv("STORAGE_PUBLIC_BUCKET")
 	if defaultBucket == "" {
 		defaultBucket = "marketplace-devtest-public-au"
 	}
