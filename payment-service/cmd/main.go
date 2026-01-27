@@ -341,7 +341,8 @@ func setupRouter(paymentHandler *handlers.PaymentHandler, webhookHandler *handle
 			payments.POST("/confirm", paymentHandler.ConfirmPayment)
 
 			// Admin read routes - require payments:read permission
-			payments.GET("/by-gateway-id/:gatewayId", rbacMw.RequirePermission(rbac.PermissionPaymentsRead), paymentHandler.GetPaymentByGatewayID)
+			// Allow internal service calls for by-gateway-id (used by storefront BFF for success page)
+			payments.GET("/by-gateway-id/:gatewayId", rbacMw.RequirePermissionAllowInternal(rbac.PermissionPaymentsRead), paymentHandler.GetPaymentByGatewayID)
 			payments.GET("/:id", rbacMw.RequirePermission(rbac.PermissionPaymentsRead), paymentHandler.GetPaymentStatus)
 			payments.GET("/:id/refunds", rbacMw.RequirePermission(rbac.PermissionPaymentsRead), paymentHandler.ListRefundsByPayment)
 

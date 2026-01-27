@@ -419,7 +419,8 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// Read operations - require orders:view permission
 			orders.GET("", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.ListOrders)
 			orders.GET("/batch", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.BatchGetOrders)
-			orders.GET("/:id", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetOrder)
+			// Allow internal service calls for GetOrder (used by storefront BFF for success page)
+			orders.GET("/:id", rbacMw.RequirePermissionAllowInternal(rbac.PermissionOrdersRead), orderHandler.GetOrder)
 			orders.GET("/:id/valid-transitions", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetValidStatusTransitions)
 			orders.GET("/:id/tracking", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetOrderTracking)
 			orders.GET("/:id/children", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetChildOrders)
