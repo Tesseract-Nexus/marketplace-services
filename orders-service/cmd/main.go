@@ -429,7 +429,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// Allow internal service calls for GetOrder (used by storefront BFF for success page)
 			orders.GET("/:id", rbacMw.RequirePermissionAllowInternal(rbac.PermissionOrdersRead), orderHandler.GetOrder)
 			orders.GET("/:id/valid-transitions", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetValidStatusTransitions)
-			orders.GET("/:id/tracking", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetOrderTracking)
+			orders.GET("/:id/tracking", rbacMw.RequirePermissionAllowInternal(rbac.PermissionOrdersRead), orderHandler.GetOrderTracking)
 			orders.GET("/:id/children", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetChildOrders)
 			orders.GET("/number/:orderNumber", rbacMw.RequirePermission(rbac.PermissionOrdersRead), orderHandler.GetOrderByNumber)
 
@@ -465,7 +465,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		returns := api.Group("/returns")
 		{
 			// Read operations
-			returns.GET("", rbacMw.RequirePermission(rbac.PermissionReturnsRead), returnHandler.ListReturns)
+			returns.GET("", rbacMw.RequirePermissionAllowInternal(rbac.PermissionReturnsRead), returnHandler.ListReturns)
 			returns.GET("/stats", rbacMw.RequirePermission(rbac.PermissionReturnsRead), returnHandler.GetReturnStats)
 			returns.GET("/policy", rbacMw.RequirePermission(rbac.PermissionReturnsRead), returnHandler.GetReturnPolicy)
 			returns.GET("/rma/:rma", rbacMw.RequirePermission(rbac.PermissionReturnsRead), returnHandler.GetReturnByRMA)
