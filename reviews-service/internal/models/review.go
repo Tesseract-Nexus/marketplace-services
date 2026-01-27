@@ -185,6 +185,19 @@ type CreateReviewRequest struct {
 	Metadata         *JSON           `json:"metadata,omitempty"`
 }
 
+// StorefrontCreateReviewRequest represents a public storefront review submission (no JWT required)
+type StorefrontCreateReviewRequest struct {
+	TargetID      string     `json:"targetId" binding:"required"`
+	TargetType    string     `json:"targetType" binding:"required"`
+	Title         *string    `json:"title,omitempty"`
+	Content       string     `json:"content" binding:"required"`
+	Type          ReviewType `json:"type" binding:"required"`
+	Ratings       []Rating   `json:"ratings,omitempty"`
+	ReviewerName  string     `json:"reviewerName" binding:"required"`
+	ReviewerEmail string     `json:"reviewerEmail" binding:"required,email"`
+	Language      *string    `json:"language,omitempty"`
+}
+
 // UpdateReviewRequest represents a request to update a review
 type UpdateReviewRequest struct {
 	Title      *string         `json:"title,omitempty"`

@@ -916,6 +916,145 @@ func (h *ReviewsHandler) GetTrendingReviews(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented yet"})
 }
 
+// StorefrontCreateReview creates a review from the public storefront (no JWT required)
+func (h *ReviewsHandler) StorefrontCreateReview(c *gin.Context) {
+	var req models.StorefrontCreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_REQUEST",
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+
+	tenantID := c.GetString("tenantId")
+
+	// Use X-User-Id header if provided (authenticated customer), otherwise generate anonymous ID
+	userID := c.GetHeader("X-User-Id")
+	if userID == "" {
+		userID = "anonymous-" + uuid.New().String()
+	}
+
+	userName := req.ReviewerName
+	userEmail := req.ReviewerEmail
+
+	review := &models.Review{
+		ApplicationID: req.TargetType,
+		TargetID:      req.TargetID,
+		TargetType:    req.TargetType,
+		UserID:        userID,
+		UserName:      &userName,
+		UserEmail:     &userEmail,
+		Title:         req.Title,
+		Content:       req.Content,
+		Type:          req.Type,
+		Status:        models.ReviewStatusPending,
+		Visibility:    models.VisibilityPublic,
+		Language:      req.Language,
+		CreatedBy:     &userID,
+	}
+
+	// Convert ratings to JSON
+	if len(req.Ratings) > 0 {
+		ratingsJSON := make(models.JSON)
+		for _, rating := range req.Ratings {
+			ratingsJSON[rating.Aspect] = map[string]interface{}{
+				"score":    rating.Score,
+				"maxScore": rating.MaxScore,
+			}
+		}
+		review.Ratings = &ratingsJSON
+	}
+
+	if err := h.repo.CreateReview(tenantID, review); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "CREATE_FAILED",
+				Message: "Failed to create review",
+			},
+		})
+		return
+	}
+
+	// Send review notification via notification-service (non-blocking)
+	if h.notificationClient != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			productName := req.TargetType
+
+			notification := &clients.ReviewNotification{
+				TenantID:      tenantID,
+				ReviewID:      review.ID.String(),
+				ProductID:     review.TargetID,
+				ProductName:   productName,
+				CustomerEmail: userEmail,
+				CustomerName:  userName,
+				Rating:        0,
+				Title:         "",
+				Comment:       review.Content,
+				IsVerified:    false,
+				Status:        "CREATED",
+				ProductURL:    h.tenantClient.BuildProductURL(ctx, tenantID, review.TargetID),
+				AdminURL:      h.tenantClient.BuildReviewsURL(ctx, tenantID),
+			}
+			if review.Title != nil {
+				notification.Title = *review.Title
+			}
+
+			if err := h.notificationClient.SendReviewCreatedNotification(ctx, notification); err != nil {
+				log.Printf("[REVIEWS] Failed to send storefront review created notification: %v", err)
+			}
+		}()
+	}
+
+	// Publish review created event (non-blocking)
+	if h.eventsPublisher != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := h.eventsPublisher.PublishReviewCreated(
+				ctx,
+				tenantID,
+				review.ID.String(),
+				review.TargetID,
+				review.TargetType,
+				review.UserID,
+				userName,
+				0,
+				review.Content,
+				false,
+			); err != nil {
+				log.Printf("[REVIEWS] Failed to publish storefront review created event: %v", err)
+			}
+		}()
+	}
+
+	c.JSON(http.StatusCreated, models.ReviewResponse{
+		Success: true,
+		Data:    review,
+	})
+}
+
+// StorefrontGetReviews retrieves only APPROVED reviews for the public storefront
+func (h *ReviewsHandler) StorefrontGetReviews(c *gin.Context) {
+	// Force status to APPROVED for public storefront
+	c.Request.URL.RawQuery = c.Request.URL.RawQuery + "&status=APPROVED"
+	if c.Query("status") != "" {
+		// Override any status param — storefront always sees APPROVED only
+		q := c.Request.URL.Query()
+		q.Set("status", "APPROVED")
+		c.Request.URL.RawQuery = q.Encode()
+	}
+	h.GetReviews(c)
+}
+
 // Helper function to create string pointer
 func stringPtr(s string) *string {
 	return &s

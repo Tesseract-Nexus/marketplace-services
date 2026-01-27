@@ -278,6 +278,7 @@ func (h *DocumentHandler) UploadReviewMedia(c *gin.Context) {
 	docReq.Header.Set("Content-Type", writer.FormDataContentType())
 	docReq.Header.Set("X-Tenant-ID", tenantID)
 	docReq.Header.Set("X-Product-ID", h.productID)
+	docReq.Header.Set("X-Internal-Service", "reviews-service")
 	if auth := c.GetHeader("Authorization"); auth != "" {
 		docReq.Header.Set("Authorization", auth)
 	}

@@ -211,6 +211,16 @@ func main() {
 		}
 	}
 
+	// Public storefront review routes (no IstioAuth or RBAC required)
+	storefrontReviews := router.Group("/api/v1/storefront/reviews")
+	storefrontReviews.Use(middleware.TenantMiddleware())
+	{
+		storefrontReviews.GET("", reviewsHandler.StorefrontGetReviews)
+		storefrontReviews.POST("", reviewsHandler.StorefrontCreateReview)
+		storefrontReviews.POST("/media/upload", documentHandler.UploadReviewMedia)
+		storefrontReviews.POST("/:id/reactions", reviewsHandler.AddReaction)
+	}
+
 	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
