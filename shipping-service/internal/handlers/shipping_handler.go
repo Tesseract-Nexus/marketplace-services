@@ -532,12 +532,23 @@ func (h *ShippingHandler) GetShipmentLabel(c *gin.Context) {
 
 // getTenantID extracts tenant ID from context
 func getTenantID(c *gin.Context) string {
-	tenantID, exists := c.Get("tenant_id")
-	if !exists {
-		// Default to demo tenant for development
-		return "00000000-0000-0000-0000-000000000001"
+	// Try lowercase first (set by IstioAuth middleware from x-jwt-claim-tenant-id)
+	tenantID := c.GetString("tenant_id")
+
+	// Fall back to camelCase (set by TenantMiddleware)
+	if tenantID == "" {
+		tenantID = c.GetString("tenantID")
 	}
-	return tenantID.(string)
+
+	// Fall back to header
+	if tenantID == "" {
+		tenantID = c.GetHeader("X-Tenant-ID")
+	}
+
+	if tenantID == "" {
+		return "00000000-0000-0000-0000-000000000001" // Default tenant
+	}
+	return tenantID
 }
 
 // stringPtr returns a pointer to a string
