@@ -47,9 +47,9 @@ func (h *WebhookHandler) HandleRazorpayWebhook(c *gin.Context) {
 	// Get tenant ID - priority: query param > context (IstioAuth) > payload notes
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		tenantIDVal, _ := c.Get("tenant_id")
-		if tenantIDVal != nil {
-			tenantID = tenantIDVal.(string)
+		tenantID = c.GetString("tenant_id")
+		if tenantID == "" {
+			tenantID = c.GetString("tenantID")
 		}
 	}
 
@@ -150,9 +150,9 @@ func (h *WebhookHandler) HandleStripeWebhook(c *gin.Context) {
 	// Get tenant ID - priority: query param > context (IstioAuth) > payload metadata
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		tenantIDVal, _ := c.Get("tenant_id")
-		if tenantIDVal != nil {
-			tenantID = tenantIDVal.(string)
+		tenantID = c.GetString("tenant_id")
+		if tenantID == "" {
+			tenantID = c.GetString("tenantID")
 		}
 	}
 
