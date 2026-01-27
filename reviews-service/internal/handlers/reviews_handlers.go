@@ -800,19 +800,21 @@ func (h *ReviewsHandler) AddReaction(c *gin.Context) {
 	tenantID := c.GetString("tenantId")
 	userID := c.GetString("userId")
 
-	// For now, just increment helpful count if type is HELPFUL
-	if req.Type == "HELPFUL" {
+	switch req.Type {
+	case "HELPFUL":
 		err = h.repo.IncrementHelpfulCount(tenantID, reviewID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-				Success: false,
-				Error: models.Error{
-					Code:    "REACTION_FAILED",
-					Message: "Failed to add reaction",
-				},
-			})
-			return
-		}
+	case "NOT_HELPFUL":
+		err = h.repo.IncrementReportCount(tenantID, reviewID)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "REACTION_FAILED",
+				Message: "Failed to add reaction",
+			},
+		})
+		return
 	}
 
 	c.JSON(http.StatusCreated, models.ReviewResponse{

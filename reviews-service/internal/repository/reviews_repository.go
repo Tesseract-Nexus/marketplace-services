@@ -406,6 +406,13 @@ func (r *ReviewsRepository) IncrementHelpfulCount(tenantID string, reviewID uuid
 		UpdateColumn("helpful_count", gorm.Expr("helpful_count + ?", 1)).Error
 }
 
+// IncrementReportCount increments the report count for a review (used for NOT_HELPFUL reactions)
+func (r *ReviewsRepository) IncrementReportCount(tenantID string, reviewID uuid.UUID) error {
+	return r.db.Model(&models.Review{}).
+		Where("tenant_id = ? AND id = ?", tenantID, reviewID).
+		UpdateColumn("report_count", gorm.Expr("report_count + ?", 1)).Error
+}
+
 // GetReviewsForModeration gets reviews that need moderation
 func (r *ReviewsRepository) GetReviewsForModeration(tenantID string, limit int, offset int) ([]models.Review, int64, error) {
 	var reviews []models.Review
