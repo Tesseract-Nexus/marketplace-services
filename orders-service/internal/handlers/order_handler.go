@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -291,6 +292,13 @@ func (h *OrderHandler) GetOrderByNumber(c *gin.Context) {
 // @Router /orders [get]
 func (h *OrderHandler) ListOrders(c *gin.Context) {
 	tenantID, ok := getTenantID(c)
+
+	// DEBUG: Log tenant context for troubleshooting admin orders issue
+	log.Printf("[Orders Handler] ListOrders - tenant_id from context: %q, ok: %v", tenantID, ok)
+	log.Printf("[Orders Handler] ListOrders - x-jwt-claim-tenant-id header: %q", c.GetHeader("x-jwt-claim-tenant-id"))
+	log.Printf("[Orders Handler] ListOrders - X-Tenant-ID header: %q", c.GetHeader("X-Tenant-ID"))
+	log.Printf("[Orders Handler] ListOrders - Authorization header present: %v", c.GetHeader("Authorization") != "")
+
 	if !ok {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Error:   "Missing tenant ID",

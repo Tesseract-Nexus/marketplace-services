@@ -278,6 +278,10 @@ func (r *orderRepository) List(filters OrderFilters) ([]models.Order, int64, err
 	var orders []models.Order
 	var total int64
 
+	// DEBUG: Log filter values for troubleshooting
+	fmt.Printf("[Orders Repo] List - TenantID filter: %q, VendorID: %q, Page: %d, Limit: %d\n",
+		filters.TenantID, filters.VendorID, filters.Page, filters.Limit)
+
 	query := r.db.Model(&models.Order{})
 
 	// Apply tenant filter (required)
@@ -336,6 +340,9 @@ func (r *orderRepository) List(filters OrderFilters) ([]models.Order, int64, err
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list orders: %w", err)
 	}
+
+	// DEBUG: Log results
+	fmt.Printf("[Orders Repo] List - Found %d orders, Total: %d\n", len(orders), total)
 
 	return orders, total, nil
 }
