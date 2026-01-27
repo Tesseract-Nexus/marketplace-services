@@ -432,7 +432,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// Update operations - require orders:update permission
 			orders.PUT("/:id", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), orderHandler.UpdateOrder)
 			orders.PATCH("/:id/status", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), orderHandler.UpdateOrderStatus)
-			orders.PATCH("/:id/payment-status", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), orderHandler.UpdatePaymentStatus)
+			orders.PATCH("/:id/payment-status", rbacMw.RequirePermissionAllowInternal(rbac.PermissionOrdersUpdate), orderHandler.UpdatePaymentStatus)
 			orders.PATCH("/:id/fulfillment-status", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), orderHandler.UpdateFulfillmentStatus)
 			orders.POST("/:id/tracking", rbacMw.RequirePermission(rbac.PermissionOrdersShip), orderHandler.AddShippingTracking)
 			orders.POST("/:id/split", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), orderHandler.SplitOrder)
