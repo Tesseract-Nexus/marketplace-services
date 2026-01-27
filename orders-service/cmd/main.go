@@ -538,6 +538,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// If Authorization header present, customer ID extracted from JWT
 			// If no auth, customerId should be provided in request body (guest checkout)
 			storefrontOrders.POST("", orderHandler.CreateOrder)
+			storefrontOrders.POST("/cancel", orderHandler.StorefrontCancelOrder)
 		}
 
 		// Payment methods for checkout - returns enabled methods for the tenant

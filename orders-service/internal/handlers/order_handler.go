@@ -1176,3 +1176,65 @@ func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
 
 	c.JSON(http.StatusOK, order)
 }
+
+// StorefrontCancelOrderRequest is the request body for storefront order cancellation.
+type StorefrontCancelOrderRequest struct {
+	OrderNumber string `json:"orderNumber" binding:"required"`
+	Reason      string `json:"reason"`
+}
+
+// StorefrontCancelOrder cancels an order from the storefront (no RBAC, tenant-scoped).
+// POST /api/v1/storefront/orders/cancel
+func (h *OrderHandler) StorefrontCancelOrder(c *gin.Context) {
+	tenantID, ok := getTenantID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Missing tenant ID",
+			Message: "X-Tenant-ID header is required",
+		})
+		return
+	}
+
+	var req StorefrontCancelOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	order, err := h.orderService.GetOrderByNumber(req.OrderNumber, tenantID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error:   "Order not found",
+			Message: "Order not found",
+		})
+		return
+	}
+
+	// Only allow cancelling orders in PLACED or CONFIRMED status
+	if order.Status != models.OrderStatusPlaced && order.Status != models.OrderStatusConfirmed {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Cannot cancel",
+			Message: "This order can no longer be cancelled",
+		})
+		return
+	}
+
+	reason := req.Reason
+	if reason == "" {
+		reason = "Cancelled by customer"
+	}
+
+	cancelledOrder, err := h.orderService.CancelOrder(order.ID, reason, tenantID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Cancel failed",
+			Message: "Unable to cancel this order",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, cancelledOrder)
+}
