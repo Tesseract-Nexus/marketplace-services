@@ -240,12 +240,24 @@ func (s *GatewaySelectorService) SetPrimaryGateway(ctx context.Context, tenantID
 	countryCode = strings.ToUpper(countryCode)
 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// First, unset any existing primary for this tenant and country
+		// First, get all region IDs for this tenant and country using a subquery
+		// (GORM's Joins() doesn't work with Update())
+		var regionIDs []uuid.UUID
 		if err := tx.Model(&models.PaymentGatewayRegion{}).
+			Select("payment_gateway_regions.id").
 			Joins("JOIN payment_gateway_configs ON payment_gateway_regions.gateway_config_id = payment_gateway_configs.id").
 			Where("payment_gateway_configs.tenant_id = ? AND payment_gateway_regions.country_code = ?", tenantID, countryCode).
-			Update("is_primary", false).Error; err != nil {
+			Pluck("payment_gateway_regions.id", &regionIDs).Error; err != nil {
 			return err
+		}
+
+		// Unset primary on all existing regions for this country
+		if len(regionIDs) > 0 {
+			if err := tx.Model(&models.PaymentGatewayRegion{}).
+				Where("id IN ?", regionIDs).
+				Update("is_primary", false).Error; err != nil {
+				return err
+			}
 		}
 
 		// Set the new primary
