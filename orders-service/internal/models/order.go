@@ -146,6 +146,13 @@ type Order struct {
 	// Storefront host for building email URLs (custom domain or default subdomain)
 	StorefrontHost string `json:"storefrontHost,omitempty" gorm:"type:varchar(255)"`
 
+	// Receipt/Invoice tracking
+	ReceiptNumber      string     `json:"receiptNumber,omitempty" gorm:"type:varchar(50);index:idx_orders_receipt_number"`
+	InvoiceNumber      string     `json:"invoiceNumber,omitempty" gorm:"type:varchar(50);index:idx_orders_invoice_number"`
+	ReceiptDocumentID  *uuid.UUID `json:"receiptDocumentId,omitempty" gorm:"type:uuid"`       // Reference to receipt_documents table
+	ReceiptShortURL    string     `json:"receiptShortUrl,omitempty" gorm:"type:varchar(255)"` // Short URL for receipt download
+	ReceiptGeneratedAt *time.Time `json:"receiptGeneratedAt,omitempty"`                       // When receipt was generated
+
 	// Relationships
 	Items     []OrderItem     `json:"items" gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`
 	Customer  *OrderCustomer  `json:"customer" gorm:"foreignKey:OrderID;constraint:OnDelete:CASCADE"`

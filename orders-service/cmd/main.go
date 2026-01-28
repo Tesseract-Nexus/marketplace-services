@@ -102,6 +102,8 @@ func main() {
 	returnRepo := repository.NewReturnRepository(db)
 	shippingMethodRepo := repository.NewShippingMethodRepository(db)
 	cancellationSettingsRepo := repository.NewCancellationSettingsRepository(db)
+	receiptSettingsRepo := repository.NewReceiptSettingsRepository(db)
+	receiptDocumentRepo := repository.NewReceiptDocumentRepository(db)
 
 	// Initialize clients
 	productsServiceURL := os.Getenv("PRODUCTS_SERVICE_URL")
@@ -144,6 +146,10 @@ func main() {
 	// Initialize approval client for approval workflows
 	approvalClient := clients.NewApprovalClient()
 	log.Println("Approval client initialized for refund/cancellation workflows")
+
+	// Initialize document client for receipt storage
+	documentClient := clients.NewDocumentClient()
+	log.Println("Document client initialized for receipt storage")
 
 	// Initialize NATS events publisher for real-time admin notifications
 	logger := logrus.New()
@@ -197,6 +203,7 @@ func main() {
 	orderService := services.NewOrderService(orderRepo, returnRepo, cancellationSettingsService, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
 	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
+	receiptService := services.NewReceiptService(receiptSettingsRepo, receiptDocumentRepo, documentClient)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)
@@ -205,6 +212,8 @@ func main() {
 	approvalHandler := handlers.NewApprovalAwareHandler(orderService, orderRepo, approvalClient)
 	paymentConfigHandler := handlers.NewPaymentConfigHandler(paymentConfigService)
 	cancellationSettingsHandler := handlers.NewCancellationSettingsHandler(cancellationSettingsService)
+	receiptHandler := handlers.NewReceiptHandler(receiptService, orderService, guestTokenSvc)
+	log.Println("✓ Receipt handler initialized")
 
 	// Start approval event subscriber
 	approvalSubscriber, err = subscribers.NewApprovalSubscriber(orderService, approvalClient, logger)
@@ -223,7 +232,7 @@ func main() {
 	guestOrderHandler := handlers.NewGuestOrderHandler(orderService, guestTokenSvc)
 
 	// Setup router
-	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, guestOrderHandler, cancellationSettingsHandler, metrics, rbacMiddleware, logger)
+	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, guestOrderHandler, cancellationSettingsHandler, receiptHandler, metrics, rbacMiddleware, logger)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)
@@ -344,6 +353,8 @@ func migrateDatabase(db *gorm.DB) error {
 		&models.ReturnPolicy{},
 		&models.ShippingMethod{},
 		&models.CancellationSettings{},
+		&models.ReceiptSettings{},
+		&models.ReceiptDocument{},
 	)
 
 	// If migration fails due to constraint issues, try again after dropping any remaining constraints
@@ -366,6 +377,8 @@ func migrateDatabase(db *gorm.DB) error {
 			&models.ReturnPolicy{},
 			&models.ShippingMethod{},
 			&models.CancellationSettings{},
+			&models.ReceiptSettings{},
+			&models.ReceiptDocument{},
 		)
 	}
 
@@ -373,7 +386,7 @@ func migrateDatabase(db *gorm.DB) error {
 }
 
 // setupRouter configures the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, guestOrderHandler *handlers.GuestOrderHandler, cancellationSettingsHandler *handlers.CancellationSettingsHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
+func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, guestOrderHandler *handlers.GuestOrderHandler, cancellationSettingsHandler *handlers.CancellationSettingsHandler, receiptHandler *handlers.ReceiptHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -458,6 +471,15 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 
 			// Approval-related endpoints
 			orders.GET("/approvals", rbacMw.RequirePermission(rbac.PermissionApprovalsRead), approvalHandler.GetPendingApprovals)
+
+			// Receipt generation endpoints - require orders:view permission
+			orders.GET("/:id/receipt", rbacMw.RequirePermissionAllowInternal(rbac.PermissionOrdersRead), receiptHandler.GenerateReceipt)
+			orders.POST("/:id/receipt", rbacMw.RequirePermission(rbac.PermissionOrdersRead), receiptHandler.GenerateReceipt)
+			orders.GET("/:id/receipt/url", rbacMw.RequirePermission(rbac.PermissionOrdersRead), receiptHandler.GetReceiptURL)
+
+			// Receipt storage endpoints - generate and store receipt in document service
+			orders.POST("/:id/receipt/generate", rbacMw.RequirePermission(rbac.PermissionOrdersUpdate), receiptHandler.GenerateAndStoreReceipt)
+			orders.GET("/:id/receipts", rbacMw.RequirePermission(rbac.PermissionOrdersRead), receiptHandler.GetOrderReceiptDocuments)
 		}
 
 		// Internal callback endpoint for approval service
@@ -540,6 +562,13 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 				cancellation.POST("", rbacMw.RequirePermission("settings:store:edit"), cancellationSettingsHandler.CreateSettings)
 				cancellation.PUT("", rbacMw.RequirePermission("settings:store:edit"), cancellationSettingsHandler.UpdateSettings)
 			}
+
+			// Receipt settings - requires store settings permission
+			receipt := settings.Group("/receipt")
+			{
+				receipt.GET("", rbacMw.RequirePermission("settings:store:view"), receiptHandler.GetReceiptSettings)
+				receipt.PUT("", rbacMw.RequirePermission("settings:store:edit"), receiptHandler.UpdateReceiptSettings)
+			}
 		}
 	}
 
@@ -576,6 +605,8 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		customerStorefront.GET("/orders", orderHandler.ListCustomerOrders)
 		customerStorefront.GET("/orders/:id", orderHandler.GetCustomerOrder)
 		customerStorefront.GET("/orders/:id/tracking", orderHandler.GetOrderTracking)
+		// Download receipt for own orders
+		customerStorefront.GET("/orders/:id/receipt", receiptHandler.GetCustomerOrderReceipt)
 	}
 	log.Println("✓ Public storefront endpoints initialized")
 
@@ -588,10 +619,28 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		publicAPI.GET("/orders/lookup", guestOrderHandler.LookupOrder)
 		publicAPI.POST("/orders/cancel", guestOrderHandler.CancelOrder)
 
+		// Guest receipt download (token-based authentication)
+		publicAPI.GET("/orders/receipt", receiptHandler.GetGuestReceipt)
+		publicAPI.GET("/orders/receipt/url", receiptHandler.GetGuestReceiptURL)
+
 		// Public cancellation settings for storefront
 		publicAPI.GET("/settings/cancellation", cancellationSettingsHandler.GetPublicSettings)
 	}
 	log.Println("✓ Public guest order endpoints initialized")
+
+	// =============================================================================
+	// SHORT URL RECEIPT DOWNLOAD (capability-based auth via short code)
+	// These endpoints do NOT require JWT or tenant header.
+	// The short code itself acts as a capability token.
+	// A presigned URL (15 min expiry) is generated on each access.
+	// =============================================================================
+	receiptShortURL := router.Group("/r")
+	{
+		receiptShortURL.GET("/:shortCode", receiptHandler.GetReceiptByShortCode)
+		receiptShortURL.GET("/:shortCode/info", receiptHandler.GetReceiptByShortCodeJSON)
+	}
+	log.Println("✓ Receipt short URL endpoints initialized")
+	log.Println("✓ All receipt endpoints initialized")
 
 	return router
 }
