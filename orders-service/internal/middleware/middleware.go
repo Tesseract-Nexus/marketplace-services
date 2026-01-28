@@ -95,6 +95,10 @@ func TenantID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.GetHeader("X-Tenant-ID")
 		if tenantID == "" {
+			// Try Istio JWT claim header (used by admin BFF)
+			tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+		}
+		if tenantID == "" {
 			// Try to get from query parameter as fallback (for development only)
 			tenantID = c.Query("tenantId")
 		}
@@ -157,6 +161,10 @@ func GetVendorID(c *gin.Context) string {
 func RequireTenantID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.GetHeader("X-Tenant-ID")
+		if tenantID == "" {
+			// Try Istio JWT claim header (used by admin BFF)
+			tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+		}
 		if tenantID == "" {
 			// Try to get from query parameter as fallback
 			tenantID = c.Query("tenantId")
