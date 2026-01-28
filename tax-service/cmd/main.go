@@ -158,7 +158,13 @@ func setupRouter(taxHandler *handlers.TaxHandler, db *gorm.DB, rbacMiddleware *r
 	// API routes with RBAC
 	v1 := router.Group("/api/v1")
 	{
-		// Tax calculation endpoints with RBAC
+		// Public storefront tax calculation (no auth required for checkout)
+		storefront := v1.Group("/storefront")
+		{
+			storefront.POST("/tax/calculate", taxHandler.CalculateTax)
+		}
+
+		// Tax calculation endpoints with RBAC (for admin)
 		tax := v1.Group("/tax")
 		{
 			tax.POST("/calculate", rbacMiddleware.RequirePermission(rbac.PermissionTaxRead), taxHandler.CalculateTax)
