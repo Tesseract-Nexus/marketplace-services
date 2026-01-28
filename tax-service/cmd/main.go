@@ -71,6 +71,20 @@ func main() {
 	// Initialize repository with Redis caching
 	taxRepo := repository.NewTaxRepository(db, redisClient)
 
+	// Initialize NATS events subscriber for automatic tax nexus provisioning
+	go func() {
+		subscriber, err := events.NewSubscriber(taxRepo, eventLogger)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize events subscriber: %v (automatic nexus provisioning disabled)", err)
+			return
+		}
+		if err := subscriber.Start(); err != nil {
+			log.Printf("WARNING: Failed to start events subscriber: %v", err)
+			return
+		}
+		log.Println("✓ NATS events subscriber initialized (listening for tenant.created)")
+	}()
+
 	// Initialize services
 	cacheTTL := time.Duration(cfg.CacheTTLMinutes) * time.Minute
 	taxCalculator := services.NewTaxCalculator(taxRepo, cacheTTL)

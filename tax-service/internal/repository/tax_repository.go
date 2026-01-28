@@ -534,3 +534,21 @@ func (r *TaxRepository) GetProductCategoryBySAC(ctx context.Context, tenantID st
 	}
 	return &category, nil
 }
+
+// GetJurisdictionByCode gets a jurisdiction by code and type (used for tax nexus provisioning)
+func (r *TaxRepository) GetJurisdictionByCode(ctx context.Context, tenantID, code, jurisdictionType string) (*models.TaxJurisdiction, error) {
+	var jurisdiction models.TaxJurisdiction
+	err := r.db.WithContext(ctx).
+		Where("tenant_id IN ? AND code = ? AND type = ? AND is_active = true",
+			[]string{tenantID, GlobalTenantID}, code, jurisdictionType).
+		First(&jurisdiction).Error
+	if err != nil {
+		return nil, err
+	}
+	return &jurisdiction, nil
+}
+
+// CreateNexus creates a new tax nexus record
+func (r *TaxRepository) CreateNexus(ctx context.Context, nexus *models.TaxNexus) error {
+	return r.db.WithContext(ctx).Create(nexus).Error
+}
