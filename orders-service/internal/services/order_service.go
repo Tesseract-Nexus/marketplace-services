@@ -597,8 +597,17 @@ func (s *orderService) CancelOrder(id uuid.UUID, reason string, tenantID string)
 		return nil, fmt.Errorf("failed to cancel order: %w", err)
 	}
 
-	// Add timeline event for the cancellation (nil userID indicates system event)
-	s.orderRepo.AddTimelineEvent(id, "ORDER_CANCELLED", cancellationNotes, nil, tenantID)
+	// Get customer name for the timeline event (show who cancelled the order)
+	cancelledBy := "customer"
+	if order.Customer != nil {
+		customerName := strings.TrimSpace(order.Customer.FirstName + " " + order.Customer.LastName)
+		if customerName != "" {
+			cancelledBy = customerName
+		}
+	}
+
+	// Add timeline event for the cancellation with the customer's name
+	s.orderRepo.AddTimelineEventByName(id, "ORDER_CANCELLED", cancellationNotes, cancelledBy, tenantID)
 
 	// Restore inventory with idempotency key to prevent duplicate restorations
 	inventoryItems := make([]clients.InventoryItem, len(order.Items))

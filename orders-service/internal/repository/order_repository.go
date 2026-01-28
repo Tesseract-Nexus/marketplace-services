@@ -35,6 +35,7 @@ type OrderRepository interface {
 	UpdateShippingTracking(id uuid.UUID, carrier string, trackingNumber string, trackingUrl string, tenantID string) error
 	UpdateCustomerID(id uuid.UUID, customerID uuid.UUID, tenantID string) error
 	AddTimelineEvent(orderID uuid.UUID, event, description string, createdBy *uuid.UUID, tenantID string) error
+	AddTimelineEventByName(orderID uuid.UUID, event, description, createdByName, tenantID string) error
 	GetTimelineByOrderID(orderID uuid.UUID) ([]models.OrderTimeline, error)
 	// Order splitting methods
 	RemoveItems(orderID uuid.UUID, itemIDs []uuid.UUID, tenantID string) error
@@ -616,6 +617,27 @@ func (r *orderRepository) AddTimelineEvent(orderID uuid.UUID, event, description
 		Description: description,
 		Timestamp:   time.Now(),
 		CreatedBy:   createdByStr,
+	}
+
+	if err := r.db.Create(&timeline).Error; err != nil {
+		return fmt.Errorf("failed to add timeline event: %w", err)
+	}
+
+	return nil
+}
+
+// AddTimelineEventByName adds a timeline event with a custom creator name (for customer-initiated events)
+func (r *orderRepository) AddTimelineEventByName(orderID uuid.UUID, event, description, createdByName, tenantID string) error {
+	if createdByName == "" {
+		createdByName = "system"
+	}
+
+	timeline := models.OrderTimeline{
+		OrderID:     orderID,
+		Event:       event,
+		Description: description,
+		Timestamp:   time.Now(),
+		CreatedBy:   createdByName,
 	}
 
 	if err := r.db.Create(&timeline).Error; err != nil {
