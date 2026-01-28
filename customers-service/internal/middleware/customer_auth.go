@@ -19,8 +19,24 @@ type JWTPayload struct {
 
 // CustomerAuthMiddleware validates customer JWT tokens and extracts customer ID
 // This middleware is for public/storefront routes where customers access their own data
+// Also supports internal service-to-service calls via X-Internal-Service header
 func CustomerAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check for internal service call (BFF to service)
+		// Internal services pass customer ID via X-User-Id header
+		if c.GetHeader("X-Internal-Service") != "" {
+			customerID := c.GetHeader("X-User-Id")
+			if customerID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "X-User-Id header required for internal service calls"})
+				c.Abort()
+				return
+			}
+			c.Set("customer_id", customerID)
+			c.Set("is_internal_service", true)
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
