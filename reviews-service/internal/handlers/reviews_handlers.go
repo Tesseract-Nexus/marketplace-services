@@ -797,37 +797,185 @@ func (h *ReviewsHandler) AddReaction(c *gin.Context) {
 		return
 	}
 
+	// Get tenantId from context (set by TenantMiddleware) or from header
 	tenantID := c.GetString("tenantId")
-	userID := c.GetString("userId")
-
-	switch req.Type {
-	case "HELPFUL":
-		err = h.repo.IncrementHelpfulCount(tenantID, reviewID)
-	case "NOT_HELPFUL":
-		err = h.repo.IncrementReportCount(tenantID, reviewID)
+	if tenantID == "" {
+		tenantID = c.GetHeader("X-Tenant-ID")
 	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+
+	// Get userId from context (IstioAuth) or from header (storefront BFF)
+	userID := c.GetString("userId")
+	if userID == "" {
+		userID = c.GetHeader("X-User-Id")
+	}
+
+	// Validate tenant is present
+	if tenantID == "" {
+		log.Printf("[AddReaction] ERROR: Missing tenant ID")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
 			Error: models.Error{
-				Code:    "REACTION_FAILED",
-				Message: "Failed to add reaction",
+				Code:    "TENANT_REQUIRED",
+				Message: "Tenant ID is required",
 			},
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, models.ReviewResponse{
-		Success: true,
-		Message: stringPtr("Reaction added successfully"),
-		Data: &models.Review{
-			ID:     reviewID,
-			UserID: userID,
-		},
+	// Validate user is authenticated (required for reactions)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "UNAUTHORIZED",
+				Message: "You must be logged in to react to reviews",
+			},
+		})
+		return
+	}
+
+	// Validate reaction type
+	var reactionType models.ReactionType
+	switch req.Type {
+	case "HELPFUL":
+		reactionType = models.ReactionTypeHelpful
+	case "NOT_HELPFUL":
+		reactionType = models.ReactionTypeNotHelpful
+	default:
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_REACTION_TYPE",
+				Message: "Invalid reaction type. Must be HELPFUL or NOT_HELPFUL",
+			},
+		})
+		return
+	}
+
+	// Verify the review exists
+	review, err := h.repo.GetReviewByID(tenantID, reviewID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "REVIEW_NOT_FOUND",
+				Message: "Review not found",
+			},
+		})
+		return
+	}
+
+	// Prevent users from reacting to their own reviews
+	if review.UserID == userID {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "SELF_REACTION_NOT_ALLOWED",
+				Message: "You cannot react to your own review",
+			},
+		})
+		return
+	}
+
+	// Add/update/remove the reaction (upsert with toggle behavior)
+	log.Printf("[AddReaction] Processing reaction: tenantID=%s, reviewID=%s, userID=%s, type=%s", tenantID, reviewID, userID, reactionType)
+	action, err := h.repo.UpsertReaction(tenantID, reviewID, userID, reactionType)
+	if err != nil {
+		log.Printf("[AddReaction] ERROR: Failed to upsert reaction: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "REACTION_FAILED",
+				Message: "Failed to process reaction: " + err.Error(),
+			},
+		})
+		return
+	}
+	log.Printf("[AddReaction] Reaction processed successfully: action=%s", action)
+
+	// Get updated counts
+	helpfulCount, notHelpfulCount, _ := h.repo.GetReviewReactionCounts(tenantID, reviewID)
+
+	// Build response message
+	var message string
+	var responseReactionType models.ReactionType
+	switch action {
+	case "added":
+		message = "Reaction added successfully"
+		responseReactionType = reactionType
+	case "removed":
+		message = "Reaction removed successfully"
+		responseReactionType = "" // No reaction after removal
+	case "changed":
+		message = "Reaction changed successfully"
+		responseReactionType = reactionType
+	}
+
+	c.JSON(http.StatusOK, models.AddReactionResponse{
+		Success:         true,
+		Message:         message,
+		ReactionType:    responseReactionType,
+		Action:          action,
+		HelpfulCount:    int(helpfulCount),
+		NotHelpfulCount: int(notHelpfulCount),
 	})
 }
+
 func (h *ReviewsHandler) RemoveReaction(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented yet"})
+	reviewID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_ID",
+				Message: "Invalid review ID format",
+			},
+		})
+		return
+	}
+
+	tenantID := c.GetString("tenantId")
+	// Get userId from context (IstioAuth) or from header (storefront BFF)
+	userID := c.GetString("userId")
+	if userID == "" {
+		userID = c.GetHeader("X-User-Id")
+	}
+
+	// Validate user is authenticated
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "UNAUTHORIZED",
+				Message: "You must be logged in to remove reactions",
+			},
+		})
+		return
+	}
+
+	// Remove the reaction
+	err = h.repo.RemoveReaction(tenantID, reviewID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "REMOVE_REACTION_FAILED",
+				Message: "Failed to remove reaction",
+			},
+		})
+		return
+	}
+
+	// Get updated counts
+	helpfulCount, notHelpfulCount, _ := h.repo.GetReviewReactionCounts(tenantID, reviewID)
+
+	c.JSON(http.StatusOK, models.AddReactionResponse{
+		Success:         true,
+		Message:         "Reaction removed successfully",
+		Action:          "removed",
+		HelpfulCount:    int(helpfulCount),
+		NotHelpfulCount: int(notHelpfulCount),
+	})
 }
 func (h *ReviewsHandler) AddComment(c *gin.Context) {
 	reviewID, err := uuid.Parse(c.Param("id"))

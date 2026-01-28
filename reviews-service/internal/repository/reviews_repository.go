@@ -514,3 +514,125 @@ func (r *ReviewsRepository) AddMediaToReview(tenantID string, reviewID uuid.UUID
 			"updated_at": review.UpdatedAt,
 		}).Error
 }
+
+// ========== REACTION METHODS (Per-User Unique Reactions) ==========
+
+// GetUserReaction gets the current reaction of a user for a review
+func (r *ReviewsRepository) GetUserReaction(tenantID string, reviewID uuid.UUID, userID string) (*models.ReviewReaction, error) {
+	var reaction models.ReviewReaction
+	err := r.db.Where("tenant_id = ? AND review_id = ? AND user_id = ?", tenantID, reviewID, userID).
+		First(&reaction).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil // No reaction found
+		}
+		return nil, err
+	}
+	return &reaction, nil
+}
+
+// UpsertReaction adds or updates a user's reaction to a review
+// Returns: (action string, error) where action is "added", "changed", or "removed"
+func (r *ReviewsRepository) UpsertReaction(tenantID string, reviewID uuid.UUID, userID string, reactionType models.ReactionType) (string, error) {
+	// Check for existing reaction
+	existingReaction, err := r.GetUserReaction(tenantID, reviewID, userID)
+	if err != nil {
+		return "", err
+	}
+
+	if existingReaction == nil {
+		// No existing reaction - create new one
+		newReaction := &models.ReviewReaction{
+			TenantID:     tenantID,
+			ReviewID:     reviewID,
+			UserID:       userID,
+			ReactionType: reactionType,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+		if err := r.db.Create(newReaction).Error; err != nil {
+			return "", err
+		}
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+		return "added", nil
+	}
+
+	// Existing reaction found
+	if existingReaction.ReactionType == reactionType {
+		// Same reaction type - toggle off (remove)
+		if err := r.db.Delete(existingReaction).Error; err != nil {
+			return "", err
+		}
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+		return "removed", nil
+	}
+
+	// Different reaction type - update to new type
+	existingReaction.ReactionType = reactionType
+	existingReaction.UpdatedAt = time.Now()
+	if err := r.db.Save(existingReaction).Error; err != nil {
+		return "", err
+	}
+	r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+	return "changed", nil
+}
+
+// RemoveReaction removes a user's reaction from a review
+func (r *ReviewsRepository) RemoveReaction(tenantID string, reviewID uuid.UUID, userID string) error {
+	result := r.db.Where("tenant_id = ? AND review_id = ? AND user_id = ?", tenantID, reviewID, userID).
+		Delete(&models.ReviewReaction{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		r.invalidateReviewCaches(context.Background(), tenantID, reviewID)
+	}
+	return nil
+}
+
+// GetReviewReactionCounts gets the current helpful and not helpful counts for a review
+// This queries the review_reactions table directly for accurate counts
+func (r *ReviewsRepository) GetReviewReactionCounts(tenantID string, reviewID uuid.UUID) (helpfulCount int64, notHelpfulCount int64, err error) {
+	// Count helpful reactions
+	err = r.db.Model(&models.ReviewReaction{}).
+		Where("tenant_id = ? AND review_id = ? AND reaction_type = ?", tenantID, reviewID, models.ReactionTypeHelpful).
+		Count(&helpfulCount).Error
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// Count not helpful reactions
+	err = r.db.Model(&models.ReviewReaction{}).
+		Where("tenant_id = ? AND review_id = ? AND reaction_type = ?", tenantID, reviewID, models.ReactionTypeNotHelpful).
+		Count(&notHelpfulCount).Error
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return helpfulCount, notHelpfulCount, nil
+}
+
+// GetReviewWithUserReaction gets a review along with the current user's reaction
+func (r *ReviewsRepository) GetReviewWithUserReaction(tenantID string, reviewID uuid.UUID, userID string) (*models.Review, *models.UserReactionInfo, error) {
+	review, err := r.GetReviewByID(tenantID, reviewID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	reactionInfo := &models.UserReactionInfo{
+		HasReacted: false,
+	}
+
+	if userID != "" {
+		reaction, err := r.GetUserReaction(tenantID, reviewID, userID)
+		if err != nil {
+			return review, reactionInfo, nil // Return review even if reaction lookup fails
+		}
+		if reaction != nil {
+			reactionInfo.HasReacted = true
+			reactionInfo.ReactionType = reaction.ReactionType
+		}
+	}
+
+	return review, reactionInfo, nil
+}

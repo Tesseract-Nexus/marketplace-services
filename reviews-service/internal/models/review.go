@@ -54,7 +54,9 @@ const (
 type ReactionType string
 
 const (
-	ReactionTypeHelpful ReactionType = "helpful"
+	ReactionTypeHelpful    ReactionType = "HELPFUL"
+	ReactionTypeNotHelpful ReactionType = "NOT_HELPFUL"
+	// Legacy types kept for backward compatibility
 	ReactionTypeLike    ReactionType = "like"
 	ReactionTypeDislike ReactionType = "dislike"
 	ReactionTypeLove    ReactionType = "love"
@@ -152,6 +154,7 @@ type Review struct {
 	Media            *JSON           `json:"media,omitempty" gorm:"type:jsonb"`
 	Tags             *JSON           `json:"tags,omitempty" gorm:"type:jsonb"`
 	HelpfulCount     int             `json:"helpfulCount" gorm:"default:0"`
+	NotHelpfulCount  int             `json:"notHelpfulCount" gorm:"default:0"`
 	ReportCount      int             `json:"reportCount" gorm:"default:0"`
 	Featured         bool            `json:"featured" gorm:"default:false"`
 	VerifiedPurchase bool            `json:"verifiedPurchase" gorm:"default:false"`
@@ -404,4 +407,37 @@ type Error struct {
 // TableName returns the table name for the Review model
 func (Review) TableName() string {
 	return "reviews"
+}
+
+// ReviewReaction represents a user's reaction to a review (stored in database)
+// Unique constraint on (review_id, user_id) ensures one reaction per user per review
+type ReviewReaction struct {
+	ID           uuid.UUID    `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	TenantID     string       `json:"tenantId" gorm:"not null;index"`
+	ReviewID     uuid.UUID    `json:"reviewId" gorm:"type:uuid;not null;index:idx_reaction_review_user,unique"`
+	UserID       string       `json:"userId" gorm:"not null;index:idx_reaction_review_user,unique"`
+	ReactionType ReactionType `json:"reactionType" gorm:"column:reaction_type;not null"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+}
+
+// TableName returns the table name for the ReviewReaction model
+func (ReviewReaction) TableName() string {
+	return "review_reactions"
+}
+
+// AddReactionResponse represents the response for adding/updating a reaction
+type AddReactionResponse struct {
+	Success        bool         `json:"success"`
+	Message        string       `json:"message"`
+	ReactionType   ReactionType `json:"reactionType,omitempty"`
+	Action         string       `json:"action"` // "added", "removed", "changed"
+	HelpfulCount   int          `json:"helpfulCount"`
+	NotHelpfulCount int         `json:"notHelpfulCount"`
+}
+
+// UserReactionInfo represents the user's current reaction on a review
+type UserReactionInfo struct {
+	HasReacted   bool         `json:"hasReacted"`
+	ReactionType ReactionType `json:"reactionType,omitempty"`
 }

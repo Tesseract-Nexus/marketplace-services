@@ -59,10 +59,21 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Auto-migrate models
+	// Auto-migrate models (runs on every startup, creates tables if not exist)
+	log.Println("Starting database migration...")
+
+	// Migrate Review model
 	if err := db.AutoMigrate(&models.Review{}); err != nil {
-		log.Fatal("Failed to migrate database:", err)
+		log.Fatal("Failed to migrate Review model:", err)
 	}
+	log.Println("✓ Review model migrated")
+
+	// Migrate ReviewReaction model (for per-user unique reactions)
+	if err := db.AutoMigrate(&models.ReviewReaction{}); err != nil {
+		log.Fatal("Failed to migrate ReviewReaction model:", err)
+	}
+	log.Println("✓ ReviewReaction model migrated (unique reactions per user)")
+
 	log.Println("✓ Database migration completed")
 
 	// Initialize Redis client (graceful degradation if unavailable)
