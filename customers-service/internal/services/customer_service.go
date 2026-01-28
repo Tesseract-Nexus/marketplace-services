@@ -399,6 +399,33 @@ func (s *CustomerService) GetAddresses(ctx context.Context, tenantID string, cus
 	return s.repo.GetAddresses(ctx, tenantID, customerID)
 }
 
+// GetAddressByID retrieves a single address by ID with tenant isolation
+func (s *CustomerService) GetAddressByID(ctx context.Context, tenantID string, addressID uuid.UUID) (*models.CustomerAddress, error) {
+	return s.repo.GetAddressByID(ctx, tenantID, addressID)
+}
+
+// SetDefaultAddress sets an address as the default for the customer
+func (s *CustomerService) SetDefaultAddress(ctx context.Context, tenantID string, customerID uuid.UUID, addressID uuid.UUID) (*models.CustomerAddress, error) {
+	// Get the address to verify it exists and belongs to the customer
+	address, err := s.repo.GetAddressByID(ctx, tenantID, addressID)
+	if err != nil {
+		return nil, fmt.Errorf("address not found: %w", err)
+	}
+
+	// Verify the address belongs to the specified customer
+	if address.CustomerID != customerID {
+		return nil, fmt.Errorf("address does not belong to this customer")
+	}
+
+	// Set this address as default (repository will unset other defaults)
+	address.IsDefault = true
+	if err := s.repo.UpdateAddress(ctx, address); err != nil {
+		return nil, fmt.Errorf("failed to set default address: %w", err)
+	}
+
+	return address, nil
+}
+
 // AddNote adds a note to a customer
 func (s *CustomerService) AddNote(ctx context.Context, note *models.CustomerNote) error {
 	return s.repo.AddNote(ctx, note)

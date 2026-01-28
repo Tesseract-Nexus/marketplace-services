@@ -252,6 +252,7 @@ func main() {
 			customers.GET("/:id/addresses", rbacMiddleware.RequirePermission(rbac.PermissionCustomersRead), customerHandler.GetAddresses)
 			customers.PUT("/:id/addresses/:addressId", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), customerHandler.UpdateAddress)
 			customers.DELETE("/:id/addresses/:addressId", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), customerHandler.DeleteAddress)
+			customers.PATCH("/:id/addresses/:addressId", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), customerHandler.SetDefaultAddress)
 
 			// Customer notes
 			customers.POST("/:id/notes", rbacMiddleware.RequirePermission(rbac.PermissionCustomersUpdate), customerHandler.AddNote)
@@ -393,6 +394,13 @@ func main() {
 		publicCustomers.PUT("/:id/wishlist", wishlistHandler.SyncWishlist)
 		publicCustomers.DELETE("/:id/wishlist", wishlistHandler.ClearWishlist)
 		publicCustomers.DELETE("/:id/wishlist/:productId", wishlistHandler.RemoveFromWishlist)
+
+		// Addresses (for storefront use - customers managing their own addresses)
+		publicCustomers.GET("/:id/addresses", customerHandler.GetAddresses)
+		publicCustomers.POST("/:id/addresses", customerHandler.AddAddress)
+		publicCustomers.PUT("/:id/addresses/:addressId", customerHandler.UpdateAddress)
+		publicCustomers.DELETE("/:id/addresses/:addressId", customerHandler.DeleteAddress)
+		publicCustomers.PATCH("/:id/addresses/:addressId", customerHandler.SetDefaultAddress)
 	}
 	log.Println("✓ Public storefront endpoints initialized")
 

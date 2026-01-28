@@ -297,113 +297,477 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 }
 
 // AddAddress handles POST /api/v1/customers/:id/addresses
+// Creates a new address for a customer with comprehensive validation
 func (h *CustomerHandler) AddAddress(c *gin.Context) {
 	tenantID := c.GetString("tenant_id")
 	if tenantID == "" {
 		tenantID = c.Query("tenant_id")
 	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required (via X-Tenant-ID header)",
+			},
+		})
+		return
+	}
 
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CUSTOMER_ID",
+				"message": "Invalid customer ID format",
+			},
+		})
+		return
+	}
+
+	// Verify customer exists and belongs to tenant
+	customer, err := h.service.GetCustomer(c.Request.Context(), tenantID, customerID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "CUSTOMER_NOT_FOUND",
+				"message": "Customer not found",
+			},
+		})
+		return
+	}
+
+	// Check address limit (prevent abuse)
+	existingAddresses, _ := h.service.GetAddresses(c.Request.Context(), tenantID, customerID)
+	if len(existingAddresses) >= 20 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "ADDRESS_LIMIT_EXCEEDED",
+				"message": "Maximum of 20 addresses allowed per customer",
+			},
+		})
 		return
 	}
 
 	var address models.CustomerAddress
 	if err := c.ShouldBindJSON(&address); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_JSON",
+				"message": "Invalid request body: " + err.Error(),
+			},
+		})
 		return
 	}
 
+	// Set required fields from context
 	address.CustomerID = customerID
 	address.TenantID = tenantID
 
-	if err := h.service.AddAddress(c.Request.Context(), &address); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Sanitize input
+	sanitizeAddress(&address)
+
+	// Validate address
+	if validationErrors := validateAddress(&address, false); len(validationErrors) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": "Address validation failed",
+				"details": validationErrors,
+			},
+		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, address)
+	// Log operation (without PII)
+	log.Printf("Adding address for customer (tenant=%s, customerID=%s, type=%s, isDefault=%v)",
+		tenantID, customerID.String(), address.AddressType, address.IsDefault)
+
+	if err := h.service.AddAddress(c.Request.Context(), &address); err != nil {
+		log.Printf("Failed to add address: %v (tenant=%s, customerID=%s)", err, tenantID, customerID.String())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "CREATE_FAILED",
+				"message": "Failed to create address",
+			},
+		})
+		return
+	}
+
+	// Log success (without PII)
+	log.Printf("Address created successfully (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), address.ID.String())
+
+	_ = customer // Use customer to avoid unused variable warning
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    address,
+	})
 }
 
 // GetAddresses handles GET /api/v1/customers/:id/addresses
+// Returns all addresses for a customer with proper tenant isolation
 func (h *CustomerHandler) GetAddresses(c *gin.Context) {
 	tenantID := c.GetString("tenant_id")
 	if tenantID == "" {
 		tenantID = c.Query("tenant_id")
 	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required (via X-Tenant-ID header)",
+			},
+		})
+		return
+	}
 
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CUSTOMER_ID",
+				"message": "Invalid customer ID format",
+			},
+		})
 		return
 	}
 
 	addresses, err := h.service.GetAddresses(c.Request.Context(), tenantID, customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("Failed to fetch addresses: %v (tenant=%s, customerID=%s)", err, tenantID, customerID.String())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "FETCH_FAILED",
+				"message": "Failed to retrieve addresses",
+			},
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, addresses)
+	// Return empty array instead of null for consistency
+	if addresses == nil {
+		addresses = []models.CustomerAddress{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    addresses,
+		"count":   len(addresses),
+	})
 }
 
 // DeleteAddress handles DELETE /api/v1/customers/:id/addresses/:addressId
+// Deletes an address with proper ownership and tenant validation
 func (h *CustomerHandler) DeleteAddress(c *gin.Context) {
 	tenantID := c.GetString("tenant_id")
 	if tenantID == "" {
 		tenantID = c.Query("tenant_id")
 	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required (via X-Tenant-ID header)",
+			},
+		})
+		return
+	}
+
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CUSTOMER_ID",
+				"message": "Invalid customer ID format",
+			},
+		})
+		return
+	}
 
 	addressID, err := uuid.Parse(c.Param("addressId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid address ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_ADDRESS_ID",
+				"message": "Invalid address ID format",
+			},
+		})
+		return
+	}
+
+	// Verify address belongs to customer (ownership check)
+	address, err := h.service.GetAddressByID(c.Request.Context(), tenantID, addressID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "ADDRESS_NOT_FOUND",
+				"message": "Address not found",
+			},
+		})
+		return
+	}
+
+	// Verify ownership
+	if address.CustomerID != customerID {
+		log.Printf("Address ownership mismatch: address belongs to %s, request for %s (tenant=%s)",
+			address.CustomerID.String(), customerID.String(), tenantID)
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "FORBIDDEN",
+				"message": "Access denied: cannot delete addresses for other customers",
+			},
+		})
 		return
 	}
 
 	if err := h.service.DeleteAddress(c.Request.Context(), tenantID, addressID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("Failed to delete address: %v (tenant=%s, addressID=%s)", err, tenantID, addressID.String())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "DELETE_FAILED",
+				"message": "Failed to delete address",
+			},
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "address deleted successfully"})
+	log.Printf("Address deleted successfully (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), addressID.String())
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Address deleted successfully",
+	})
+}
+
+// SetDefaultAddress handles PATCH /api/v1/customers/:id/addresses/:addressId
+// Sets an address as the default address for the customer with ownership validation
+func (h *CustomerHandler) SetDefaultAddress(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+	if tenantID == "" {
+		tenantID = c.Query("tenant_id")
+	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required (via X-Tenant-ID header)",
+			},
+		})
+		return
+	}
+
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CUSTOMER_ID",
+				"message": "Invalid customer ID format",
+			},
+		})
+		return
+	}
+
+	addressID, err := uuid.Parse(c.Param("addressId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_ADDRESS_ID",
+				"message": "Invalid address ID format",
+			},
+		})
+		return
+	}
+
+	log.Printf("Setting default address (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), addressID.String())
+
+	updatedAddress, err := h.service.SetDefaultAddress(c.Request.Context(), tenantID, customerID, addressID)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "not found") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "ADDRESS_NOT_FOUND",
+					"message": "Address not found",
+				},
+			})
+			return
+		}
+		if strings.Contains(errMsg, "does not belong") {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "FORBIDDEN",
+					"message": "Address does not belong to this customer",
+				},
+			})
+			return
+		}
+		log.Printf("Failed to set default address: %v (tenant=%s, addressID=%s)", err, tenantID, addressID.String())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "UPDATE_FAILED",
+				"message": "Failed to set default address",
+			},
+		})
+		return
+	}
+
+	log.Printf("Default address set successfully (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), addressID.String())
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    updatedAddress,
+	})
 }
 
 // UpdateAddress handles PUT /api/v1/customers/:id/addresses/:addressId
+// Updates an existing address with comprehensive validation and ownership checks
 func (h *CustomerHandler) UpdateAddress(c *gin.Context) {
 	tenantID := c.GetString("tenant_id")
 	if tenantID == "" {
 		tenantID = c.Query("tenant_id")
 	}
+	if tenantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "MISSING_TENANT",
+				"message": "Tenant ID is required (via X-Tenant-ID header)",
+			},
+		})
+		return
+	}
 
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CUSTOMER_ID",
+				"message": "Invalid customer ID format",
+			},
+		})
 		return
 	}
 
 	addressID, err := uuid.Parse(c.Param("addressId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid address ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_ADDRESS_ID",
+				"message": "Invalid address ID format",
+			},
+		})
+		return
+	}
+
+	// Verify address exists and belongs to customer
+	existingAddress, err := h.service.GetAddressByID(c.Request.Context(), tenantID, addressID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "ADDRESS_NOT_FOUND",
+				"message": "Address not found",
+			},
+		})
+		return
+	}
+
+	// Verify ownership
+	if existingAddress.CustomerID != customerID {
+		log.Printf("Address ownership mismatch: address belongs to %s, request for %s (tenant=%s)",
+			existingAddress.CustomerID.String(), customerID.String(), tenantID)
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "FORBIDDEN",
+				"message": "Access denied: cannot update addresses for other customers",
+			},
+		})
 		return
 	}
 
 	var address models.CustomerAddress
 	if err := c.ShouldBindJSON(&address); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_JSON",
+				"message": "Invalid request body: " + err.Error(),
+			},
+		})
 		return
 	}
 
-	// Set customer ID from path parameter
+	// Set required fields from context
 	address.CustomerID = customerID
+	address.TenantID = tenantID
+
+	// Sanitize input
+	sanitizeAddress(&address)
+
+	// Validate address (for update)
+	if validationErrors := validateAddress(&address, true); len(validationErrors) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "VALIDATION_ERROR",
+				"message": "Address validation failed",
+				"details": validationErrors,
+			},
+		})
+		return
+	}
+
+	log.Printf("Updating address (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), addressID.String())
 
 	updatedAddress, err := h.service.UpdateAddress(c.Request.Context(), tenantID, addressID, &address)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("Failed to update address: %v (tenant=%s, addressID=%s)", err, tenantID, addressID.String())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "UPDATE_FAILED",
+				"message": "Failed to update address",
+			},
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, updatedAddress)
+	log.Printf("Address updated successfully (tenant=%s, customerID=%s, addressID=%s)",
+		tenantID, customerID.String(), addressID.String())
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    updatedAddress,
+	})
 }
 
 // AddNote handles POST /api/v1/customers/:id/notes
@@ -856,4 +1220,213 @@ func (h *CustomerHandler) UnlockCustomer(c *gin.Context) {
 		"success": true,
 		"data":    customer,
 	})
+}
+
+// =============================================================================
+// Address Validation and Sanitization Helper Functions
+// =============================================================================
+
+// AddressValidationError represents a validation error with field details
+type AddressValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+	Code    string `json:"code"`
+}
+
+// validateAddress validates a CustomerAddress for creation or update
+func validateAddress(address *models.CustomerAddress, isUpdate bool) []AddressValidationError {
+	var errors []AddressValidationError
+
+	// Required field validation (skip some for updates if not provided)
+	if !isUpdate || address.AddressLine1 != "" {
+		if strings.TrimSpace(address.AddressLine1) == "" {
+			errors = append(errors, AddressValidationError{
+				Field:   "addressLine1",
+				Message: "Address line 1 is required",
+				Code:    "REQUIRED",
+			})
+		}
+	}
+
+	if !isUpdate || address.City != "" {
+		if strings.TrimSpace(address.City) == "" {
+			errors = append(errors, AddressValidationError{
+				Field:   "city",
+				Message: "City is required",
+				Code:    "REQUIRED",
+			})
+		}
+	}
+
+	if !isUpdate || address.PostalCode != "" {
+		if strings.TrimSpace(address.PostalCode) == "" {
+			errors = append(errors, AddressValidationError{
+				Field:   "postalCode",
+				Message: "Postal code is required",
+				Code:    "REQUIRED",
+			})
+		}
+	}
+
+	if !isUpdate || address.Country != "" {
+		if strings.TrimSpace(address.Country) == "" {
+			errors = append(errors, AddressValidationError{
+				Field:   "country",
+				Message: "Country is required",
+				Code:    "REQUIRED",
+			})
+		}
+	}
+
+	// Length validation
+	if len(address.FirstName) > 100 {
+		errors = append(errors, AddressValidationError{
+			Field:   "firstName",
+			Message: "First name must not exceed 100 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.LastName) > 100 {
+		errors = append(errors, AddressValidationError{
+			Field:   "lastName",
+			Message: "Last name must not exceed 100 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.Company) > 255 {
+		errors = append(errors, AddressValidationError{
+			Field:   "company",
+			Message: "Company must not exceed 255 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.AddressLine1) > 255 {
+		errors = append(errors, AddressValidationError{
+			Field:   "addressLine1",
+			Message: "Address line 1 must not exceed 255 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.AddressLine2) > 255 {
+		errors = append(errors, AddressValidationError{
+			Field:   "addressLine2",
+			Message: "Address line 2 must not exceed 255 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.City) > 100 {
+		errors = append(errors, AddressValidationError{
+			Field:   "city",
+			Message: "City must not exceed 100 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.State) > 100 {
+		errors = append(errors, AddressValidationError{
+			Field:   "state",
+			Message: "State must not exceed 100 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.PostalCode) > 20 {
+		errors = append(errors, AddressValidationError{
+			Field:   "postalCode",
+			Message: "Postal code must not exceed 20 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.Phone) > 50 {
+		errors = append(errors, AddressValidationError{
+			Field:   "phone",
+			Message: "Phone must not exceed 50 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	if len(address.Label) > 50 {
+		errors = append(errors, AddressValidationError{
+			Field:   "label",
+			Message: "Label must not exceed 50 characters",
+			Code:    "MAX_LENGTH",
+		})
+	}
+
+	// Format validation - country code must be 2 letters
+	if address.Country != "" && len(address.Country) != 2 {
+		errors = append(errors, AddressValidationError{
+			Field:   "country",
+			Message: "Country must be a valid 2-letter ISO country code (e.g., US, GB, AU)",
+			Code:    "INVALID_FORMAT",
+		})
+	}
+
+	// Validate address type
+	validAddressTypes := map[models.AddressType]bool{
+		models.AddressTypeShipping: true,
+		models.AddressTypeBilling:  true,
+		models.AddressTypeBoth:     true,
+	}
+	if address.AddressType != "" && !validAddressTypes[address.AddressType] {
+		errors = append(errors, AddressValidationError{
+			Field:   "addressType",
+			Message: "Address type must be SHIPPING, BILLING, or BOTH",
+			Code:    "INVALID_VALUE",
+		})
+	}
+
+	// Security: Check for potentially dangerous characters (SQL injection, XSS)
+	dangerousPatterns := []string{"<script", "javascript:", "onclick", "onerror", "--", "/*", "*/"}
+	fieldsToCheck := map[string]string{
+		"firstName":    address.FirstName,
+		"lastName":     address.LastName,
+		"company":      address.Company,
+		"addressLine1": address.AddressLine1,
+		"addressLine2": address.AddressLine2,
+		"city":         address.City,
+		"state":        address.State,
+	}
+
+	for field, value := range fieldsToCheck {
+		lowerValue := strings.ToLower(value)
+		for _, pattern := range dangerousPatterns {
+			if strings.Contains(lowerValue, strings.ToLower(pattern)) {
+				errors = append(errors, AddressValidationError{
+					Field:   field,
+					Message: "Contains invalid characters",
+					Code:    "INVALID_CHARS",
+				})
+				break
+			}
+		}
+	}
+
+	return errors
+}
+
+// sanitizeAddress normalizes and sanitizes address fields
+func sanitizeAddress(address *models.CustomerAddress) {
+	address.FirstName = strings.TrimSpace(address.FirstName)
+	address.LastName = strings.TrimSpace(address.LastName)
+	address.Company = strings.TrimSpace(address.Company)
+	address.AddressLine1 = strings.TrimSpace(address.AddressLine1)
+	address.AddressLine2 = strings.TrimSpace(address.AddressLine2)
+	address.City = strings.TrimSpace(address.City)
+	address.State = strings.TrimSpace(address.State)
+	address.PostalCode = strings.TrimSpace(strings.ToUpper(address.PostalCode))
+	address.Country = strings.TrimSpace(strings.ToUpper(address.Country))
+	address.Phone = strings.TrimSpace(address.Phone)
+	address.Label = strings.TrimSpace(address.Label)
+
+	// Set default address type if not provided
+	if address.AddressType == "" {
+		address.AddressType = models.AddressTypeShipping
+	}
 }
