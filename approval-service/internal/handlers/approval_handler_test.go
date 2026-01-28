@@ -56,24 +56,24 @@ func (m *MockApprovalService) ListMyRequests(ctx interface{}, tenantID string, r
 	return args.Get(0).([]models.ApprovalRequest), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *MockApprovalService) ApproveRequest(ctx interface{}, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
-	args := m.Called(ctx, requestID, approverID, approverRole, comment)
+func (m *MockApprovalService) ApproveRequest(ctx interface{}, requestID uuid.UUID, approverID uuid.UUID, approverRole string, approverName string, approverEmail string, comment string) (*models.ApprovalRequest, error) {
+	args := m.Called(ctx, requestID, approverID, approverRole, approverName, approverEmail, comment)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.ApprovalRequest), args.Error(1)
 }
 
-func (m *MockApprovalService) RejectRequest(ctx interface{}, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
-	args := m.Called(ctx, requestID, approverID, approverRole, comment)
+func (m *MockApprovalService) RejectRequest(ctx interface{}, requestID uuid.UUID, approverID uuid.UUID, approverRole string, approverName string, approverEmail string, comment string) (*models.ApprovalRequest, error) {
+	args := m.Called(ctx, requestID, approverID, approverRole, approverName, approverEmail, comment)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.ApprovalRequest), args.Error(1)
 }
 
-func (m *MockApprovalService) CancelRequest(ctx interface{}, requestID uuid.UUID, requesterID uuid.UUID) (*models.ApprovalRequest, error) {
-	args := m.Called(ctx, requestID, requesterID)
+func (m *MockApprovalService) CancelRequest(ctx interface{}, requestID uuid.UUID, requesterID uuid.UUID, requesterName string, requesterEmail string) (*models.ApprovalRequest, error) {
+	args := m.Called(ctx, requestID, requesterID, requesterName, requesterEmail)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

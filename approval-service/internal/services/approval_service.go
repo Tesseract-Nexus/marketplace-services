@@ -462,7 +462,7 @@ func (s *ApprovalService) RequestChanges(ctx context.Context, requestID uuid.UUI
 }
 
 // CancelRequest cancels an approval request
-func (s *ApprovalService) CancelRequest(ctx context.Context, requestID uuid.UUID, requesterID uuid.UUID) (*models.ApprovalRequest, error) {
+func (s *ApprovalService) CancelRequest(ctx context.Context, requestID uuid.UUID, requesterID uuid.UUID, requesterName string, requesterEmail string) (*models.ApprovalRequest, error) {
 	request, err := s.repo.GetRequestByID(ctx, requestID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -489,8 +489,8 @@ func (s *ApprovalService) CancelRequest(ctx context.Context, requestID uuid.UUID
 	// Create audit log
 	s.createAuditLog(ctx, request, models.AuditEventCancelled, &requesterID, nil)
 
-	// Publish approval.cancelled event
-	s.publishApprovalEvent(ctx, events.ApprovalCancelled, request, &requesterID, "", "", "")
+	// Publish approval.cancelled event - for cancellation, pass requester info as the actor
+	s.publishApprovalEvent(ctx, events.ApprovalCancelled, request, &requesterID, requesterName, requesterEmail, "")
 
 	return request, nil
 }
@@ -939,11 +939,19 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 		}
 	}
 
-	// Add approver info if present
+	// Add actor info based on event type
+	// For cancellation, the actor is the requester; for approve/reject, the actor is the approver
 	if approverID != nil {
-		event.ApproverID = approverID.String()
-		event.ApproverName = approverName
-		event.ApproverEmail = approverEmail
+		if eventType == events.ApprovalCancelled {
+			// For cancellation events, set requester info (the actor who cancelled)
+			event.RequesterName = approverName
+			event.RequesterEmail = approverEmail
+		} else {
+			// For approve/reject events, set approver info
+			event.ApproverID = approverID.String()
+			event.ApproverName = approverName
+			event.ApproverEmail = approverEmail
+		}
 	}
 
 	// Add decision details

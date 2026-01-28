@@ -334,7 +334,7 @@ func TestApproveRequest_Success(t *testing.T) {
 	mockRepo.On("CreateAuditLog", ctx, mock.AnythingOfType("*models.ApprovalAuditLog")).
 		Return(nil)
 
-	result, err := service.ApproveRequest(ctx, request.ID, approverID, "manager", "Looks good")
+	result, err := service.ApproveRequest(ctx, request.ID, approverID, "manager", "Test Approver", "approver@test.com", "Looks good")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -357,7 +357,7 @@ func TestApproveRequest_SelfApprovalNotAllowed(t *testing.T) {
 		Return(request, nil)
 
 	// Try to approve own request
-	result, err := service.ApproveRequest(ctx, request.ID, requesterID, "manager", "Self-approve")
+	result, err := service.ApproveRequest(ctx, request.ID, requesterID, "manager", "Test User", "user@test.com", "Self-approve")
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrSelfApprovalNotAllowed, err)
@@ -384,7 +384,7 @@ func TestApproveRequest_UnauthorizedApprover(t *testing.T) {
 		Return([]models.ApprovalDelegation{}, nil)
 
 	// Try to approve as viewer (lower role)
-	result, err := service.ApproveRequest(ctx, request.ID, approverID, "viewer", "Trying to approve")
+	result, err := service.ApproveRequest(ctx, request.ID, approverID, "viewer", "Test Approver", "approver@test.com", "Trying to approve")
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrUnauthorizedApprover, err)
@@ -408,7 +408,7 @@ func TestApproveRequest_AlreadyDecided(t *testing.T) {
 	mockRepo.On("GetRequestByID", ctx, request.ID).
 		Return(request, nil)
 
-	result, err := service.ApproveRequest(ctx, request.ID, approverID, "manager", "Approve again")
+	result, err := service.ApproveRequest(ctx, request.ID, approverID, "manager", "Test Approver", "approver@test.com", "Approve again")
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrRequestAlreadyDecided, err)
@@ -439,7 +439,7 @@ func TestApproveRequest_HigherRoleCanApprove(t *testing.T) {
 		Return(nil)
 
 	// Admin can approve manager-level requests
-	result, err := service.ApproveRequest(ctx, request.ID, approverID, "admin", "Admin approval")
+	result, err := service.ApproveRequest(ctx, request.ID, approverID, "admin", "Test Admin", "admin@test.com", "Admin approval")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -472,7 +472,7 @@ func TestRejectRequest_Success(t *testing.T) {
 	mockRepo.On("CreateAuditLog", ctx, mock.AnythingOfType("*models.ApprovalAuditLog")).
 		Return(nil)
 
-	result, err := service.RejectRequest(ctx, request.ID, approverID, "manager", "Not justified")
+	result, err := service.RejectRequest(ctx, request.ID, approverID, "manager", "Test Approver", "approver@test.com", "Not justified")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -491,7 +491,7 @@ func TestRejectRequest_NotFound(t *testing.T) {
 	mockRepo.On("GetRequestByID", ctx, requestID).
 		Return(nil, repository.ErrNotFound)
 
-	result, err := service.RejectRequest(ctx, requestID, approverID, "manager", "Reject")
+	result, err := service.RejectRequest(ctx, requestID, approverID, "manager", "Test Approver", "approver@test.com", "Reject")
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrRequestNotFound, err)
@@ -521,7 +521,7 @@ func TestCancelRequest_Success(t *testing.T) {
 	mockRepo.On("CreateAuditLog", ctx, mock.AnythingOfType("*models.ApprovalAuditLog")).
 		Return(nil)
 
-	result, err := service.CancelRequest(ctx, request.ID, requesterID)
+	result, err := service.CancelRequest(ctx, request.ID, requesterID, "Test Requester", "requester@test.com")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -545,7 +545,7 @@ func TestCancelRequest_NotRequester(t *testing.T) {
 		Return(request, nil)
 
 	// Try to cancel as different user
-	result, err := service.CancelRequest(ctx, request.ID, otherUserID)
+	result, err := service.CancelRequest(ctx, request.ID, otherUserID, "Other User", "other@test.com")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only the requester can cancel")
@@ -594,7 +594,7 @@ func TestApproveRequest_ViaDelegation(t *testing.T) {
 		Return(nil)
 
 	// Approve as delegate (who has viewer role but delegated manager authority)
-	result, err := service.ApproveRequest(ctx, request.ID, delegateID, "viewer", "Approved via delegation")
+	result, err := service.ApproveRequest(ctx, request.ID, delegateID, "viewer", "Test Delegate", "delegate@test.com", "Approved via delegation")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)

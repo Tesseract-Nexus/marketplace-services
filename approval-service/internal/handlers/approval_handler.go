@@ -378,6 +378,9 @@ func (h *ApprovalHandler) CancelRequest(c *gin.Context) {
 		return
 	}
 
+	// Extract actor info for audit logging
+	actor := gosharedmw.GetActorInfo(c)
+
 	userIDStr := c.GetString("user_id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -385,7 +388,7 @@ func (h *ApprovalHandler) CancelRequest(c *gin.Context) {
 		return
 	}
 
-	request, err := h.service.CancelRequest(c.Request.Context(), id, userID)
+	request, err := h.service.CancelRequest(c.Request.Context(), id, userID, actor.ActorName, actor.ActorEmail)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err == services.ErrRequestNotFound {
