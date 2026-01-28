@@ -401,6 +401,10 @@ func main() {
 		publicCustomers.PUT("/:id/addresses/:addressId", customerHandler.UpdateAddress)
 		publicCustomers.DELETE("/:id/addresses/:addressId", customerHandler.DeleteAddress)
 		publicCustomers.PATCH("/:id/addresses/:addressId", customerHandler.SetDefaultAddress)
+
+		// Profile (for storefront use - customers viewing/updating their own profile)
+		publicCustomers.GET("/:id", customerHandler.GetCustomer)
+		publicCustomers.PATCH("/:id", customerHandler.UpdateCustomer)
 	}
 	log.Println("✓ Public storefront endpoints initialized")
 
