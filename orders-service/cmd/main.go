@@ -416,9 +416,10 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	// Istio validates JWT and injects x-jwt-claim-* headers
 	// AllowLegacyHeaders provides backward compatibility during migration
 	api.Use(gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
-		RequireAuth:        true,
-		AllowLegacyHeaders: false,
-		SkipPaths:          []string{"/health", "/ready", "/metrics", "/swagger"},
+		RequireAuth:               true,
+		AllowLegacyHeaders:        false,
+		AllowInternalServiceCalls: true, // Allow admin BFF service-to-service calls
+		SkipPaths:                 []string{"/health", "/ready", "/metrics", "/swagger"},
 	}))
 
 	// Vendor scope filter for marketplace mode
