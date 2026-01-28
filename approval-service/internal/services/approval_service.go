@@ -908,6 +908,7 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 	event.ApprovalRequestID = request.ID.String()
 	event.WorkflowID = request.WorkflowID.String()
 	event.RequesterID = request.RequesterID.String()
+	event.RequesterName = request.RequesterName // Always include requester name from request
 	event.ActionType = request.ActionType
 	event.ResourceType = request.ResourceType
 	if request.ResourceID != nil {
