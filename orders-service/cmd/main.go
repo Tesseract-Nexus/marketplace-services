@@ -101,6 +101,7 @@ func main() {
 	orderRepo := repository.NewOrderRepository(db, redisClient)
 	returnRepo := repository.NewReturnRepository(db)
 	shippingMethodRepo := repository.NewShippingMethodRepository(db)
+	cancellationSettingsRepo := repository.NewCancellationSettingsRepository(db)
 
 	// Initialize clients
 	productsServiceURL := os.Getenv("PRODUCTS_SERVICE_URL")
@@ -194,6 +195,7 @@ func main() {
 	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
 	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
+	cancellationSettingsService := services.NewCancellationSettingsService(cancellationSettingsRepo)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)
@@ -201,6 +203,7 @@ func main() {
 	shippingHandler := handlers.NewShippingHandler(shippingMethodRepo)
 	approvalHandler := handlers.NewApprovalAwareHandler(orderService, orderRepo, approvalClient)
 	paymentConfigHandler := handlers.NewPaymentConfigHandler(paymentConfigService)
+	cancellationSettingsHandler := handlers.NewCancellationSettingsHandler(cancellationSettingsService)
 
 	// Start approval event subscriber
 	approvalSubscriber, err = subscribers.NewApprovalSubscriber(orderService, approvalClient, logger)
@@ -219,7 +222,7 @@ func main() {
 	guestOrderHandler := handlers.NewGuestOrderHandler(orderService, guestTokenSvc)
 
 	// Setup router
-	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, guestOrderHandler, metrics, rbacMiddleware, logger)
+	router := setupRouter(cfg, orderHandler, returnHandler, shippingHandler, approvalHandler, paymentConfigHandler, guestOrderHandler, cancellationSettingsHandler, metrics, rbacMiddleware, logger)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)
@@ -339,6 +342,7 @@ func migrateDatabase(db *gorm.DB) error {
 		&models.ReturnTimeline{},
 		&models.ReturnPolicy{},
 		&models.ShippingMethod{},
+		&models.CancellationSettings{},
 	)
 
 	// If migration fails due to constraint issues, try again after dropping any remaining constraints
@@ -360,6 +364,7 @@ func migrateDatabase(db *gorm.DB) error {
 			&models.ReturnTimeline{},
 			&models.ReturnPolicy{},
 			&models.ShippingMethod{},
+			&models.CancellationSettings{},
 		)
 	}
 
@@ -367,7 +372,7 @@ func migrateDatabase(db *gorm.DB) error {
 }
 
 // setupRouter configures the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, guestOrderHandler *handlers.GuestOrderHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
+func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, returnHandler *handlers.ReturnHandlers, shippingHandler *handlers.ShippingHandler, approvalHandler *handlers.ApprovalAwareHandler, paymentConfigHandler *handlers.PaymentConfigHandler, guestOrderHandler *handlers.GuestOrderHandler, cancellationSettingsHandler *handlers.CancellationSettingsHandler, metrics *gosharedmw.Metrics, rbacMw *rbac.Middleware, logger *logrus.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -522,6 +527,18 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 			// Test connection (requires test permission - owner + admin)
 			payments.POST("/configs/:code/test", rbacMw.RequirePermission(rbac.PermissionPaymentsMethodsTest), paymentConfigHandler.TestPaymentConnection)
 		}
+
+		// Cancellation settings - tenant/storefront level configuration
+		settings := api.Group("/settings")
+		{
+			// Cancellation settings - requires store settings permission
+			cancellation := settings.Group("/cancellation")
+			{
+				cancellation.GET("", rbacMw.RequirePermission("settings:store:view"), cancellationSettingsHandler.GetSettings)
+				cancellation.POST("", rbacMw.RequirePermission("settings:store:edit"), cancellationSettingsHandler.CreateSettings)
+				cancellation.PUT("", rbacMw.RequirePermission("settings:store:edit"), cancellationSettingsHandler.UpdateSettings)
+			}
+		}
 	}
 
 	// =============================================================================
@@ -568,6 +585,9 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 	{
 		publicAPI.GET("/orders/lookup", guestOrderHandler.LookupOrder)
 		publicAPI.POST("/orders/cancel", guestOrderHandler.CancelOrder)
+
+		// Public cancellation settings for storefront
+		publicAPI.GET("/settings/cancellation", cancellationSettingsHandler.GetPublicSettings)
 	}
 	log.Println("✓ Public guest order endpoints initialized")
 
