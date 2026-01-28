@@ -192,10 +192,11 @@ func main() {
 	log.Println("Guest token service initialized for guest order access")
 
 	// Initialize services
-	orderService := services.NewOrderService(orderRepo, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
+	// Note: cancellationSettingsService is initialized first as it's a dependency for orderService
+	cancellationSettingsService := services.NewCancellationSettingsService(cancellationSettingsRepo)
+	orderService := services.NewOrderService(orderRepo, returnRepo, cancellationSettingsService, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
 	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
-	cancellationSettingsService := services.NewCancellationSettingsService(cancellationSettingsRepo)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)

@@ -153,29 +153,33 @@ type SplitOrderResponse struct {
 }
 
 type orderService struct {
-	orderRepo          repository.OrderRepository
-	productsClient     clients.ProductsClient
-	taxClient          clients.TaxClient
-	customersClient    clients.CustomersClient
-	notificationClient clients.NotificationClient
-	tenantClient       clients.TenantClient
-	shippingClient     clients.ShippingClient
-	eventsPublisher    *events.Publisher // Optional: for real-time admin notifications via NATS
-	guestTokenService  *GuestTokenService
+	orderRepo                    repository.OrderRepository
+	returnRepo                   *repository.ReturnRepository
+	cancellationSettingsService  CancellationSettingsService
+	productsClient               clients.ProductsClient
+	taxClient                    clients.TaxClient
+	customersClient              clients.CustomersClient
+	notificationClient           clients.NotificationClient
+	tenantClient                 clients.TenantClient
+	shippingClient               clients.ShippingClient
+	eventsPublisher              *events.Publisher // Optional: for real-time admin notifications via NATS
+	guestTokenService            *GuestTokenService
 }
 
 // NewOrderService creates a new order service
-func NewOrderService(orderRepo repository.OrderRepository, productsClient clients.ProductsClient, taxClient clients.TaxClient, customersClient clients.CustomersClient, notificationClient clients.NotificationClient, tenantClient clients.TenantClient, shippingClient clients.ShippingClient, eventsPublisher *events.Publisher, guestTokenService *GuestTokenService) OrderService {
+func NewOrderService(orderRepo repository.OrderRepository, returnRepo *repository.ReturnRepository, cancellationSettingsService CancellationSettingsService, productsClient clients.ProductsClient, taxClient clients.TaxClient, customersClient clients.CustomersClient, notificationClient clients.NotificationClient, tenantClient clients.TenantClient, shippingClient clients.ShippingClient, eventsPublisher *events.Publisher, guestTokenService *GuestTokenService) OrderService {
 	return &orderService{
-		orderRepo:          orderRepo,
-		productsClient:     productsClient,
-		taxClient:          taxClient,
-		customersClient:    customersClient,
-		notificationClient: notificationClient,
-		tenantClient:       tenantClient,
-		shippingClient:     shippingClient,
-		eventsPublisher:    eventsPublisher,
-		guestTokenService:  guestTokenService,
+		orderRepo:                    orderRepo,
+		returnRepo:                   returnRepo,
+		cancellationSettingsService:  cancellationSettingsService,
+		productsClient:               productsClient,
+		taxClient:                    taxClient,
+		customersClient:              customersClient,
+		notificationClient:           notificationClient,
+		tenantClient:                 tenantClient,
+		shippingClient:               shippingClient,
+		eventsPublisher:              eventsPublisher,
+		guestTokenService:            guestTokenService,
 	}
 }
 
@@ -548,11 +552,35 @@ func (s *orderService) UpdateOrderStatus(id uuid.UUID, status models.OrderStatus
 	return updatedOrder, nil
 }
 
-// CancelOrder cancels an order
+// CancelOrder cancels an order with full workflow automation
+// This includes: cancellation fee calculation, return record creation, automatic refund processing,
+// timeline event logging, and multi-tenant isolation
 func (s *orderService) CancelOrder(id uuid.UUID, reason string, tenantID string) (*models.Order, error) {
+	ctx := context.Background()
+
 	order, err := s.orderRepo.GetByID(id, tenantID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get cancellation settings for the tenant
+	var cancellationFee float64
+	var canCancel bool
+	var windowName string
+	var settings *models.CancellationSettings
+
+	if s.cancellationSettingsService != nil {
+		settings, err = s.cancellationSettingsService.GetSettings(ctx, tenantID, "")
+		if err != nil {
+			fmt.Printf("WARNING: Failed to get cancellation settings for tenant %s: %v\n", tenantID, err)
+		}
+
+		if settings != nil {
+			canCancel, cancellationFee, windowName = s.cancellationSettingsService.CanCancelOrder(ctx, order, settings)
+			if !canCancel && windowName != "" {
+				return nil, fmt.Errorf("order cannot be cancelled: %s", windowName)
+			}
+		}
 	}
 
 	// Validate the status transition using state machine
@@ -560,10 +588,17 @@ func (s *orderService) CancelOrder(id uuid.UUID, reason string, tenantID string)
 		return nil, fmt.Errorf("order cannot be cancelled: %w", err)
 	}
 
-	// Update status to cancelled
-	if err := s.orderRepo.UpdateStatus(id, models.OrderStatusCancelled, fmt.Sprintf("Cancelled: %s", reason), tenantID); err != nil {
+	// Update status to cancelled with reason and fee information
+	cancellationNotes := fmt.Sprintf("Cancelled: %s", reason)
+	if cancellationFee > 0 {
+		cancellationNotes = fmt.Sprintf("Cancelled: %s (Fee: $%.2f)", reason, cancellationFee)
+	}
+	if err := s.orderRepo.UpdateStatus(id, models.OrderStatusCancelled, cancellationNotes, tenantID); err != nil {
 		return nil, fmt.Errorf("failed to cancel order: %w", err)
 	}
+
+	// Add timeline event for the cancellation (nil userID indicates system event)
+	s.orderRepo.AddTimelineEvent(id, "ORDER_CANCELLED", cancellationNotes, nil, tenantID)
 
 	// Restore inventory with idempotency key to prevent duplicate restorations
 	inventoryItems := make([]clients.InventoryItem, len(order.Items))
@@ -586,8 +621,102 @@ func (s *orderService) CancelOrder(id uuid.UUID, reason string, tenantID string)
 		fmt.Printf("WARNING: Failed to restore inventory for order %s: %v\n", order.OrderNumber, err)
 	}
 
-	// Send order cancelled email via notification-service
+	// Get updated order
 	updatedOrder, _ := s.orderRepo.GetByID(id, tenantID)
+
+	// Create a Return record to track the refund process
+	if s.returnRepo != nil && updatedOrder != nil {
+		refundAmount := updatedOrder.Total - cancellationFee
+		if refundAmount < 0 {
+			refundAmount = 0
+		}
+
+		// Determine refund method from settings
+		refundMethod := models.RefundMethodOriginal
+		if settings != nil && settings.RefundMethod == "store_credit" {
+			refundMethod = models.RefundMethodStoreCredit
+		}
+
+		// Map cancellation reason to return reason
+		returnReason := models.ReturnReasonChangedMind
+		switch reason {
+		case "FOUND_BETTER_PRICE", "BETTER_PRICE":
+			returnReason = models.ReturnReasonBetterPrice
+		case "ORDERED_BY_MISTAKE", "MISTAKE":
+			returnReason = models.ReturnReasonChangedMind
+		case "SHIPPING_TOO_SLOW", "DELAYED":
+			returnReason = models.ReturnReasonNoLongerNeeded
+		case "PAYMENT_ISSUE":
+			returnReason = models.ReturnReasonOther
+		case "OTHER":
+			returnReason = models.ReturnReasonOther
+		}
+
+		// Create return record for tracking refund
+		returnRecord := &models.Return{
+			TenantID:      tenantID,
+			OrderID:       order.ID,
+			CustomerID:    order.CustomerID,
+			Status:        models.ReturnStatusPending,
+			Reason:        returnReason,
+			ReturnType:    models.ReturnTypeRefund,
+			CustomerNotes: fmt.Sprintf("Order cancelled by customer. Reason: %s", reason),
+			RefundAmount:  refundAmount,
+			RefundMethod:  refundMethod,
+			RestockingFee: cancellationFee,
+		}
+
+		// Create return items from order items
+		for _, item := range order.Items {
+			returnItem := models.ReturnItem{
+				OrderItemID:  item.ID,
+				ProductID:    item.ProductID,
+				ProductName:  item.ProductName,
+				SKU:          item.SKU,
+				Quantity:     item.Quantity,
+				UnitPrice:    item.UnitPrice,
+				RefundAmount: float64(item.Quantity) * item.UnitPrice,
+				Reason:       returnReason,
+				ItemNotes:    "Order cancellation",
+			}
+			returnRecord.Items = append(returnRecord.Items, returnItem)
+		}
+
+		if err := s.returnRepo.CreateReturn(returnRecord); err != nil {
+			fmt.Printf("WARNING: Failed to create return record for cancelled order %s: %v\n", order.OrderNumber, err)
+		} else {
+			fmt.Printf("Created return record %s for cancelled order %s (refund: $%.2f, fee: $%.2f)\n",
+				returnRecord.RMANumber, order.OrderNumber, refundAmount, cancellationFee)
+
+			// Auto-complete the return if auto-refund is enabled and order was paid
+			if settings != nil && settings.AutoRefundEnabled && updatedOrder.PaymentStatus == models.PaymentStatusPaid {
+				now := time.Now()
+				returnRecord.Status = models.ReturnStatusCompleted
+				returnRecord.RefundProcessedAt = &now
+				returnRecord.AdminNotes = "Auto-approved and processed due to order cancellation with auto-refund enabled"
+
+				if err := s.returnRepo.UpdateReturn(returnRecord); err != nil {
+					fmt.Printf("WARNING: Failed to auto-complete return for order %s: %v\n", order.OrderNumber, err)
+				} else {
+					// Add timeline entry for auto-completion
+					timeline := &models.ReturnTimeline{
+						ReturnID:  returnRecord.ID,
+						Status:    models.ReturnStatusCompleted,
+						Message:   fmt.Sprintf("Return auto-approved and refund of $%.2f processed (cancellation fee: $%.2f)", refundAmount, cancellationFee),
+						CreatedAt: now,
+					}
+					s.returnRepo.AddTimelineEntry(timeline)
+
+					// Update order payment status to refunded
+					if refundAmount > 0 {
+						_, _ = s.RefundOrder(id, &refundAmount, "Order cancelled - automatic refund", tenantID)
+					}
+				}
+			}
+		}
+	}
+
+	// Send order cancelled email via notification-service
 	if s.notificationClient != nil && updatedOrder != nil && updatedOrder.Customer != nil && updatedOrder.Customer.Email != "" {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
