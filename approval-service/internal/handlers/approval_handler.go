@@ -219,6 +219,9 @@ func (h *ApprovalHandler) ApproveRequest(c *gin.Context) {
 		return
 	}
 
+	// Extract actor info for audit logging
+	actor := gosharedmw.GetActorInfo(c)
+
 	userIDStr := c.GetString("user_id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -233,7 +236,7 @@ func (h *ApprovalHandler) ApproveRequest(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&body)
 
-	request, err := h.service.ApproveRequest(c.Request.Context(), id, userID, userRole, body.Comment)
+	request, err := h.service.ApproveRequest(c.Request.Context(), id, userID, userRole, actor.ActorName, actor.ActorEmail, body.Comment)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch err {
@@ -270,6 +273,9 @@ func (h *ApprovalHandler) RejectRequest(c *gin.Context) {
 		return
 	}
 
+	// Extract actor info for audit logging
+	actor := gosharedmw.GetActorInfo(c)
+
 	userIDStr := c.GetString("user_id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -287,7 +293,7 @@ func (h *ApprovalHandler) RejectRequest(c *gin.Context) {
 		return
 	}
 
-	request, err := h.service.RejectRequest(c.Request.Context(), id, userID, userRole, body.Comment)
+	request, err := h.service.RejectRequest(c.Request.Context(), id, userID, userRole, actor.ActorName, actor.ActorEmail, body.Comment)
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch err {

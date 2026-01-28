@@ -175,14 +175,14 @@ func (s *ApprovalService) CreateRequest(ctx context.Context, tenantID string, re
 	s.createAuditLog(ctx, request, models.AuditEventCreated, &requesterID, nil)
 
 	// Publish approval.requested event
-	s.publishApprovalEvent(ctx, events.ApprovalRequested, request, nil, "")
+	s.publishApprovalEvent(ctx, events.ApprovalRequested, request, nil, "", "", "")
 
 	return request, nil
 }
 
 // ApproveRequest approves an approval request
 // Fix #6: Wrapped in transaction for atomicity
-func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
+func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, approverName string, approverEmail string, comment string) (*models.ApprovalRequest, error) {
 	var request *models.ApprovalRequest
 	var delegatedFrom *uuid.UUID
 	var actualRole string
@@ -298,14 +298,14 @@ func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID uuid.UUI
 	s.createAuditLog(ctx, request, models.AuditEventApproved, &approverID, metadata)
 
 	// Publish approval.granted event
-	s.publishApprovalEvent(ctx, events.ApprovalGranted, request, &approverID, comment)
+	s.publishApprovalEvent(ctx, events.ApprovalGranted, request, &approverID, approverName, approverEmail, comment)
 
 	return request, nil
 }
 
 // RejectRequest rejects an approval request
 // Fix #6: Wrapped in transaction for atomicity
-func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, comment string) (*models.ApprovalRequest, error) {
+func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID, approverID uuid.UUID, approverRole string, approverName string, approverEmail string, comment string) (*models.ApprovalRequest, error) {
 	var request *models.ApprovalRequest
 	var delegatedFrom *uuid.UUID
 	var actualRole string
@@ -392,7 +392,7 @@ func (s *ApprovalService) RejectRequest(ctx context.Context, requestID uuid.UUID
 	s.createAuditLog(ctx, request, models.AuditEventRejected, &approverID, metadata)
 
 	// Publish approval.rejected event
-	s.publishApprovalEvent(ctx, events.ApprovalRejected, request, &approverID, comment)
+	s.publishApprovalEvent(ctx, events.ApprovalRejected, request, &approverID, approverName, approverEmail, comment)
 
 	return request, nil
 }
@@ -490,7 +490,7 @@ func (s *ApprovalService) CancelRequest(ctx context.Context, requestID uuid.UUID
 	s.createAuditLog(ctx, request, models.AuditEventCancelled, &requesterID, nil)
 
 	// Publish approval.cancelled event
-	s.publishApprovalEvent(ctx, events.ApprovalCancelled, request, &requesterID, "")
+	s.publishApprovalEvent(ctx, events.ApprovalCancelled, request, &requesterID, "", "", "")
 
 	return request, nil
 }
@@ -899,7 +899,7 @@ func (s *ApprovalService) createAuditLog(ctx context.Context, request *models.Ap
 }
 
 // publishApprovalEvent publishes an approval event to NATS
-func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType string, request *models.ApprovalRequest, approverID *uuid.UUID, comment string) {
+func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType string, request *models.ApprovalRequest, approverID *uuid.UUID, approverName string, approverEmail string, comment string) {
 	if s.publisher == nil {
 		return
 	}
@@ -942,6 +942,8 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 	// Add approver info if present
 	if approverID != nil {
 		event.ApproverID = approverID.String()
+		event.ApproverName = approverName
+		event.ApproverEmail = approverEmail
 	}
 
 	// Add decision details
