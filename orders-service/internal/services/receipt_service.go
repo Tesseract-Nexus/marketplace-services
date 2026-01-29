@@ -24,7 +24,6 @@ import (
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	mimage "github.com/johnfercher/maroto/v2/pkg/components/image"
-	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
@@ -488,42 +487,41 @@ func (s *receiptService) buildTaxLines(order *models.Order, currencySymbol strin
 	return lines
 }
 
+// PDF color palette - clean, professional grays and a subtle accent
+var (
+	pdfDarkText   = &props.Color{Red: 33, Green: 37, Blue: 41}    // #212529
+	pdfMediumText = &props.Color{Red: 73, Green: 80, Blue: 87}    // #495057
+	pdfLightText  = &props.Color{Red: 108, Green: 117, Blue: 125} // #6C757D
+	pdfHeaderBg   = &props.Color{Red: 248, Green: 249, Blue: 250} // #F8F9FA
+	pdfTableBg    = &props.Color{Red: 233, Green: 236, Blue: 239} // #E9ECEF
+	pdfAccent     = &props.Color{Red: 13, Green: 110, Blue: 253}  // #0D6EFD
+	pdfWhite      = &props.Color{Red: 255, Green: 255, Blue: 255}
+	pdfTotalBg    = &props.Color{Red: 33, Green: 37, Blue: 41}    // #212529
+)
+
 // generatePDF generates a PDF receipt using maroto
 func (s *receiptService) generatePDF(data *models.ReceiptData) ([]byte, error) {
-	// Create maroto configuration
 	cfg := config.NewBuilder().
 		WithPageNumber().
-		WithLeftMargin(10).
+		WithLeftMargin(15).
 		WithTopMargin(15).
-		WithRightMargin(10).
+		WithRightMargin(15).
 		Build()
 
 	m := maroto.New(cfg)
 
-	// Add header with logo and business info
 	s.addPDFHeader(m, data)
-
-	// Add receipt details
 	s.addPDFReceiptDetails(m, data)
-
-	// Add billing and shipping info
 	s.addPDFAddresses(m, data)
-
-	// Add items table
 	s.addPDFItemsTable(m, data)
-
-	// Add totals
 	s.addPDFTotals(m, data)
 
-	// Add payment info
 	if data.Settings.ShowPaymentDetails && data.Order.Payment != nil {
 		s.addPDFPaymentInfo(m, data)
 	}
 
-	// Add footer
 	s.addPDFFooter(m, data)
 
-	// Generate PDF
 	pdfDoc, err := m.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate PDF: %w", err)
@@ -588,7 +586,7 @@ func (s *receiptService) fetchAndCircleCropLogo(logoURL string) ([]byte, error) 
 
 // addPDFHeader adds the header section to the PDF
 func (s *receiptService) addPDFHeader(m core.Maroto, data *models.ReceiptData) {
-	// Try to add logo if available
+	// Try to fetch logo
 	var logoBytes []byte
 	if data.Settings.LogoURL != "" {
 		var err error
@@ -598,103 +596,134 @@ func (s *receiptService) addPDFHeader(m core.Maroto, data *models.ReceiptData) {
 		}
 	}
 
+	// Business info components
+	businessCols := []core.Col{}
 	if logoBytes != nil {
-		// Header with logo
-		m.AddRow(30,
-			col.New(2).Add(
+		businessCols = append(businessCols,
+			col.New(1).Add(
 				mimage.NewFromBytes(logoBytes, extension.Png, props.Rect{
 					Center:  true,
-					Percent: 90,
+					Percent: 85,
 				}),
 			),
-			col.New(4).Add(
+		)
+		businessCols = append(businessCols,
+			col.New(5).Add(
 				text.New(data.Settings.BusinessName, props.Text{
-					Size:  16,
+					Size:  14,
 					Style: fontstyle.Bold,
-					Align: align.Left,
-					Top:   3,
+					Color: pdfDarkText,
+					Top:   2,
 				}),
-				text.New(data.Settings.BusinessAddress, props.Text{
-					Size:  9,
-					Top:   11,
-					Align: align.Left,
-				}),
-			),
-			col.New(6).Add(
-				text.New("RECEIPT", props.Text{
-					Size:  20,
-					Style: fontstyle.Bold,
-					Align: align.Right,
-				}),
-				text.New(fmt.Sprintf("# %s", data.ReceiptNumber), props.Text{
-					Size:  10,
-					Top:   8,
-					Align: align.Right,
+				text.New(s.buildBusinessContactLine(data.Settings), props.Text{
+					Size:  8,
+					Color: pdfLightText,
+					Top:   9,
 				}),
 			),
 		)
 	} else {
-		// Header without logo
-		m.AddRow(30,
+		businessCols = append(businessCols,
 			col.New(6).Add(
 				text.New(data.Settings.BusinessName, props.Text{
-					Size:  16,
+					Size:  14,
 					Style: fontstyle.Bold,
-					Align: align.Left,
+					Color: pdfDarkText,
 				}),
-				text.New(data.Settings.BusinessAddress, props.Text{
-					Size:  9,
-					Top:   8,
-					Align: align.Left,
-				}),
-			),
-			col.New(6).Add(
-				text.New("RECEIPT", props.Text{
-					Size:  20,
-					Style: fontstyle.Bold,
-					Align: align.Right,
-				}),
-				text.New(fmt.Sprintf("# %s", data.ReceiptNumber), props.Text{
-					Size:  10,
-					Top:   8,
-					Align: align.Right,
+				text.New(s.buildBusinessContactLine(data.Settings), props.Text{
+					Size:  8,
+					Color: pdfLightText,
+					Top:   7,
 				}),
 			),
 		)
 	}
 
-	// Add line separator
-	m.AddRow(5, line.NewCol(12))
-}
-
-// addPDFReceiptDetails adds receipt metadata
-func (s *receiptService) addPDFReceiptDetails(m core.Maroto, data *models.ReceiptData) {
-	order := data.Order
-
-	m.AddRow(20,
+	// Receipt title on the right
+	businessCols = append(businessCols,
 		col.New(6).Add(
-			text.New(fmt.Sprintf("Order #: %s", order.OrderNumber), props.Text{
-				Size:  10,
-				Align: align.Left,
-			}),
-			text.New(fmt.Sprintf("Date: %s", order.CreatedAt.Format("Jan 02, 2006")), props.Text{
-				Size:  10,
-				Top:   5,
-				Align: align.Left,
-			}),
-		),
-		col.New(6).Add(
-			text.New(fmt.Sprintf("Status: %s", order.Status), props.Text{
-				Size:  10,
+			text.New("RECEIPT", props.Text{
+				Size:  22,
+				Style: fontstyle.Bold,
 				Align: align.Right,
+				Color: pdfDarkText,
 			}),
-			text.New(fmt.Sprintf("Payment: %s", order.PaymentStatus), props.Text{
-				Size:  10,
-				Top:   5,
+			text.New(data.ReceiptNumber, props.Text{
+				Size:  9,
+				Top:   9,
 				Align: align.Right,
+				Color: pdfAccent,
+			}),
+			text.New(data.GeneratedAt.Format("January 02, 2006"), props.Text{
+				Size:  8,
+				Top:   14,
+				Align: align.Right,
+				Color: pdfLightText,
 			}),
 		),
 	)
+
+	m.AddRow(22, businessCols...).WithStyle(&props.Cell{
+		BackgroundColor: pdfHeaderBg,
+	})
+
+	// Thin accent line under header
+	m.AddRow(1).WithStyle(&props.Cell{
+		BackgroundColor: pdfAccent,
+	})
+
+	// Spacing
+	m.AddRow(4)
+}
+
+// buildBusinessContactLine creates a single-line contact summary
+func (s *receiptService) buildBusinessContactLine(settings *models.ReceiptSettings) string {
+	parts := []string{}
+	if settings.BusinessAddress != "" {
+		// Take just the first line of address for the header
+		addrLine := strings.Split(settings.BusinessAddress, "\n")[0]
+		parts = append(parts, addrLine)
+	}
+	if settings.BusinessPhone != "" {
+		parts = append(parts, settings.BusinessPhone)
+	}
+	if settings.BusinessEmail != "" {
+		parts = append(parts, settings.BusinessEmail)
+	}
+	if settings.BusinessWebsite != "" {
+		parts = append(parts, settings.BusinessWebsite)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "  |  ")
+}
+
+// addPDFReceiptDetails adds receipt metadata in a clean grid
+func (s *receiptService) addPDFReceiptDetails(m core.Maroto, data *models.ReceiptData) {
+	order := data.Order
+
+	// Row with order details in a light background box
+	m.AddRow(18,
+		col.New(3).Add(
+			text.New("Order Number", props.Text{Size: 7, Color: pdfLightText, Top: 2}),
+			text.New(order.OrderNumber, props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Top: 7}),
+		),
+		col.New(3).Add(
+			text.New("Order Date", props.Text{Size: 7, Color: pdfLightText, Top: 2}),
+			text.New(order.CreatedAt.Format("Jan 02, 2006"), props.Text{Size: 9, Color: pdfDarkText, Top: 7}),
+		),
+		col.New(3).Add(
+			text.New("Status", props.Text{Size: 7, Color: pdfLightText, Align: align.Right, Top: 2}),
+			text.New(string(order.Status), props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Align: align.Right, Top: 7}),
+		),
+		col.New(3).Add(
+			text.New("Payment", props.Text{Size: 7, Color: pdfLightText, Align: align.Right, Top: 2}),
+			text.New(string(order.PaymentStatus), props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Align: align.Right, Top: 7}),
+		),
+	).WithStyle(&props.Cell{BackgroundColor: pdfHeaderBg})
+
+	m.AddRow(4)
 }
 
 // addPDFAddresses adds billing and shipping addresses
@@ -709,272 +738,138 @@ func (s *receiptService) addPDFAddresses(m core.Maroto, data *models.ReceiptData
 
 	var shippingAddr string
 	if order.Shipping != nil && data.Settings.ShowShippingDetails {
-		shippingAddr = fmt.Sprintf("%s\n%s, %s %s\n%s",
-			order.Shipping.Street,
-			order.Shipping.City,
-			order.Shipping.State,
-			order.Shipping.PostalCode,
-			order.Shipping.Country)
+		parts := []string{order.Shipping.Street}
+		cityLine := order.Shipping.City
+		if order.Shipping.State != "" {
+			cityLine += ", " + order.Shipping.State
+		}
+		if order.Shipping.PostalCode != "" {
+			cityLine += " " + order.Shipping.PostalCode
+		}
+		parts = append(parts, cityLine)
+		if order.Shipping.Country != "" {
+			parts = append(parts, order.Shipping.Country)
+		}
+		shippingAddr = strings.Join(parts, "\n")
 	}
 
-	m.AddRow(30,
+	// Section labels
+	m.AddRow(6,
 		col.New(6).Add(
-			text.New("BILL TO:", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Left,
-			}),
-			text.New(customerName, props.Text{
-				Size:  10,
-				Top:   5,
-				Align: align.Left,
-			}),
-			text.New(customerEmail, props.Text{
-				Size:  9,
-				Top:   10,
-				Align: align.Left,
-			}),
+			text.New("BILL TO", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfLightText}),
 		),
 		col.New(6).Add(
-			text.New("SHIP TO:", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Left,
-			}),
-			text.New(shippingAddr, props.Text{
-				Size:  9,
-				Top:   5,
-				Align: align.Left,
-			}),
+			text.New("SHIP TO", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfLightText}),
 		),
 	)
 
-	// Add tax identifiers for B2B
+	// Address content
+	m.AddRow(20,
+		col.New(6).Add(
+			text.New(customerName, props.Text{Size: 10, Style: fontstyle.Bold, Color: pdfDarkText}),
+			text.New(customerEmail, props.Text{Size: 8, Color: pdfMediumText, Top: 5}),
+		),
+		col.New(6).Add(
+			text.New(shippingAddr, props.Text{Size: 9, Color: pdfDarkText}),
+		),
+	)
+
+	// Tax identifiers for B2B
 	if order.CustomerGSTIN != "" || order.CustomerVATNumber != "" {
-		m.AddRow(10,
+		m.AddRow(8,
 			col.New(12).Add(
-				text.New(s.buildCustomerTaxID(order), props.Text{
-					Size:  9,
-					Align: align.Left,
-				}),
+				text.New(s.buildCustomerTaxID(order), props.Text{Size: 8, Color: pdfMediumText}),
 			),
 		)
 	}
 
-	m.AddRow(5, line.NewCol(12))
+	m.AddRow(4)
 }
 
 // addPDFItemsTable adds the items table to the PDF
 func (s *receiptService) addPDFItemsTable(m core.Maroto, data *models.ReceiptData) {
-	// Table header
-	m.AddRow(8,
-		col.New(5).Add(
-			text.New("Item", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Left,
-			}),
-		),
-		col.New(2).Add(
-			text.New("SKU", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Center,
-			}),
-		),
-		col.New(1).Add(
-			text.New("Qty", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Center,
-			}),
-		),
-		col.New(2).Add(
-			text.New("Price", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Right,
-			}),
-		),
-		col.New(2).Add(
-			text.New("Total", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Right,
-			}),
-		),
-	)
-
-	m.AddRow(2, line.NewCol(12))
+	// Table header with dark background
+	m.AddRow(9,
+		col.New(5).Add(text.New("ITEM", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfWhite, Top: 2})),
+		col.New(2).Add(text.New("SKU", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Center, Top: 2})),
+		col.New(1).Add(text.New("QTY", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Center, Top: 2})),
+		col.New(2).Add(text.New("PRICE", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Right, Top: 2})),
+		col.New(2).Add(text.New("TOTAL", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Right, Top: 2})),
+	).WithStyle(&props.Cell{BackgroundColor: pdfTotalBg})
 
 	currencySymbol := getCurrencySymbol(data.Order.Currency)
 
-	// Table rows
-	for _, item := range data.Order.Items {
+	// Table rows with alternating backgrounds
+	for i, item := range data.Order.Items {
 		rowHeight := 8.0
 
-		// Add HSN/SAC code info if enabled
 		itemName := item.ProductName
 		if data.Settings.ShowHSNSACCodes && (item.HSNCode != "" || item.SACCode != "") {
 			code := item.HSNCode
 			if code == "" {
 				code = item.SACCode
 			}
-			itemName = fmt.Sprintf("%s\nHSN/SAC: %s", item.ProductName, code)
-			rowHeight = 12.0
+			itemName = fmt.Sprintf("%s  (HSN: %s)", item.ProductName, code)
 		}
 
-		m.AddRow(rowHeight,
-			col.New(5).Add(
-				text.New(itemName, props.Text{
-					Size:  9,
-					Align: align.Left,
-				}),
-			),
-			col.New(2).Add(
-				text.New(item.SKU, props.Text{
-					Size:  9,
-					Align: align.Center,
-				}),
-			),
-			col.New(1).Add(
-				text.New(fmt.Sprintf("%d", item.Quantity), props.Text{
-					Size:  9,
-					Align: align.Center,
-				}),
-			),
-			col.New(2).Add(
-				text.New(formatCurrency(item.UnitPrice, currencySymbol), props.Text{
-					Size:  9,
-					Align: align.Right,
-				}),
-			),
-			col.New(2).Add(
-				text.New(formatCurrency(item.TotalPrice, currencySymbol), props.Text{
-					Size:  9,
-					Align: align.Right,
-				}),
-			),
+		r := m.AddRow(rowHeight,
+			col.New(5).Add(text.New(itemName, props.Text{Size: 9, Color: pdfDarkText, Top: 1})),
+			col.New(2).Add(text.New(item.SKU, props.Text{Size: 8, Color: pdfMediumText, Align: align.Center, Top: 1})),
+			col.New(1).Add(text.New(fmt.Sprintf("%d", item.Quantity), props.Text{Size: 9, Color: pdfDarkText, Align: align.Center, Top: 1})),
+			col.New(2).Add(text.New(formatCurrency(item.UnitPrice, currencySymbol), props.Text{Size: 9, Color: pdfDarkText, Align: align.Right, Top: 1})),
+			col.New(2).Add(text.New(formatCurrency(item.TotalPrice, currencySymbol), props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Align: align.Right, Top: 1})),
 		)
+
+		// Alternate row background
+		if i%2 == 0 {
+			r.WithStyle(&props.Cell{BackgroundColor: pdfHeaderBg})
+		}
 	}
 
-	m.AddRow(3, line.NewCol(12))
+	m.AddRow(2)
 }
 
 // addPDFTotals adds the totals section
 func (s *receiptService) addPDFTotals(m core.Maroto, data *models.ReceiptData) {
-	// Subtotal
-	m.AddRow(6,
-		col.New(8),
-		col.New(2).Add(
-			text.New("Subtotal:", props.Text{
-				Size:  10,
-				Align: align.Right,
-			}),
-		),
-		col.New(2).Add(
-			text.New(data.FormattedSubtotal, props.Text{
-				Size:  10,
-				Align: align.Right,
-			}),
-		),
-	)
+	addTotalLine := func(label, value string, labelColor, valueColor *props.Color, bold bool, size float64) {
+		style := fontstyle.Normal
+		if bold {
+			style = fontstyle.Bold
+		}
+		m.AddRow(7,
+			col.New(7),
+			col.New(3).Add(text.New(label, props.Text{Size: size, Color: labelColor, Align: align.Right, Top: 1})),
+			col.New(2).Add(text.New(value, props.Text{Size: size, Style: style, Color: valueColor, Align: align.Right, Top: 1})),
+		)
+	}
+
+	addTotalLine("Subtotal", data.FormattedSubtotal, pdfMediumText, pdfDarkText, false, 9)
 
 	// Tax breakdown
 	if data.Settings.ShowTaxBreakdown {
 		for _, taxLine := range data.TaxLines {
-			m.AddRow(6,
-				col.New(8),
-				col.New(2).Add(
-					text.New(fmt.Sprintf("%s (%.1f%%):", taxLine.Name, taxLine.Rate), props.Text{
-						Size:  9,
-						Align: align.Right,
-					}),
-				),
-				col.New(2).Add(
-					text.New(taxLine.Amount, props.Text{
-						Size:  9,
-						Align: align.Right,
-					}),
-				),
-			)
+			addTotalLine(fmt.Sprintf("%s (%.1f%%)", taxLine.Name, taxLine.Rate), taxLine.Amount, pdfMediumText, pdfDarkText, false, 8)
 		}
 	} else if data.Order.TaxAmount > 0 {
-		// Show aggregate tax
-		m.AddRow(6,
-			col.New(8),
-			col.New(2).Add(
-				text.New("Tax:", props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-			col.New(2).Add(
-				text.New(data.FormattedTax, props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-		)
+		addTotalLine("Tax", data.FormattedTax, pdfMediumText, pdfDarkText, false, 9)
 	}
 
-	// Shipping
 	if data.Order.ShippingCost > 0 {
-		m.AddRow(6,
-			col.New(8),
-			col.New(2).Add(
-				text.New("Shipping:", props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-			col.New(2).Add(
-				text.New(data.FormattedShipping, props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-		)
+		addTotalLine("Shipping", data.FormattedShipping, pdfMediumText, pdfDarkText, false, 9)
 	}
 
-	// Discount
 	if data.Order.DiscountAmount > 0 {
-		m.AddRow(6,
-			col.New(8),
-			col.New(2).Add(
-				text.New("Discount:", props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-			col.New(2).Add(
-				text.New("-"+data.FormattedDiscount, props.Text{
-					Size:  10,
-					Align: align.Right,
-				}),
-			),
-		)
+		addTotalLine("Discount", "-"+data.FormattedDiscount, pdfMediumText, pdfAccent, false, 9)
 	}
 
-	// Total
-	m.AddRow(2, col.New(8), line.NewCol(4))
-	m.AddRow(8,
-		col.New(8),
-		col.New(2).Add(
-			text.New("TOTAL:", props.Text{
-				Size:  12,
-				Style: fontstyle.Bold,
-				Align: align.Right,
-			}),
-		),
-		col.New(2).Add(
-			text.New(data.FormattedTotal, props.Text{
-				Size:  12,
-				Style: fontstyle.Bold,
-				Align: align.Right,
-			}),
-		),
-	)
+	// Grand total with dark background
+	m.AddRow(10,
+		col.New(7),
+		col.New(3).Add(text.New("TOTAL", props.Text{Size: 11, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Right, Top: 2})),
+		col.New(2).Add(text.New(data.FormattedTotal, props.Text{Size: 11, Style: fontstyle.Bold, Color: pdfWhite, Align: align.Right, Top: 2})),
+	).WithStyle(&props.Cell{BackgroundColor: pdfTotalBg})
+
+	m.AddRow(3)
 }
 
 // addPDFPaymentInfo adds payment information
@@ -984,72 +879,103 @@ func (s *receiptService) addPDFPaymentInfo(m core.Maroto, data *models.ReceiptDa
 		return
 	}
 
-	m.AddRow(5)
-	m.AddRow(5, line.NewCol(12))
-
-	m.AddRow(15,
+	m.AddRow(6,
 		col.New(12).Add(
-			text.New("PAYMENT INFORMATION", props.Text{
-				Size:  10,
-				Style: fontstyle.Bold,
-				Align: align.Left,
-			}),
-			text.New(fmt.Sprintf("Method: %s", payment.Method), props.Text{
-				Size:  9,
-				Top:   5,
-				Align: align.Left,
-			}),
-			text.New(fmt.Sprintf("Transaction ID: %s", maskTransactionID(payment.TransactionID)), props.Text{
-				Size:  9,
-				Top:   10,
-				Align: align.Left,
-			}),
+			text.New("PAYMENT DETAILS", props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfLightText}),
 		),
 	)
+
+	m.AddRow(12,
+		col.New(3).Add(
+			text.New("Method", props.Text{Size: 7, Color: pdfLightText, Top: 2}),
+			text.New(strings.ToUpper(payment.Method), props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Top: 6}),
+		),
+		col.New(5).Add(
+			text.New("Transaction ID", props.Text{Size: 7, Color: pdfLightText, Top: 2}),
+			text.New(maskTransactionID(payment.TransactionID), props.Text{Size: 8, Color: pdfMediumText, Top: 6}),
+		),
+		col.New(4).Add(
+			text.New("Payment Status", props.Text{Size: 7, Color: pdfLightText, Align: align.Right, Top: 2}),
+			text.New(string(data.Order.PaymentStatus), props.Text{Size: 9, Style: fontstyle.Bold, Color: pdfDarkText, Align: align.Right, Top: 6}),
+		),
+	).WithStyle(&props.Cell{BackgroundColor: pdfHeaderBg})
+
+	m.AddRow(4)
 }
 
 // addPDFFooter adds the footer section
 func (s *receiptService) addPDFFooter(m core.Maroto, data *models.ReceiptData) {
-	m.AddRow(10)
+	// Thin line separator
+	m.AddRow(1).WithStyle(&props.Cell{BackgroundColor: pdfTableBg})
+	m.AddRow(5)
 
-	// Custom footer text
+	// Footer text
 	if data.Settings.FooterText != "" {
-		m.AddRow(10,
+		m.AddRow(8,
 			col.New(12).Add(
 				text.New(data.Settings.FooterText, props.Text{
 					Size:  9,
 					Align: align.Center,
+					Color: pdfMediumText,
+					Style: fontstyle.BoldItalic,
 				}),
 			),
 		)
 	}
 
-	// Terms if present
+	// Terms
 	if data.Settings.TermsText != "" {
-		m.AddRow(5)
-		m.AddRow(15,
+		m.AddRow(3)
+		m.AddRow(14,
 			col.New(12).Add(
-				text.New("Terms & Conditions:", props.Text{
-					Size:  8,
-					Style: fontstyle.Bold,
-					Align: align.Left,
-				}),
-				text.New(data.Settings.TermsText, props.Text{
-					Size:  7,
-					Top:   4,
-					Align: align.Left,
-				}),
+				text.New("Terms & Conditions", props.Text{Size: 7, Style: fontstyle.Bold, Color: pdfLightText}),
+				text.New(data.Settings.TermsText, props.Text{Size: 7, Color: pdfLightText, Top: 4}),
+			),
+		)
+	}
+
+	// Business details in footer (full address, tax IDs)
+	settings := data.Settings
+	hasBusinessDetails := settings.BusinessAddress != "" || settings.GSTIN != "" || settings.VATNumber != "" || settings.TaxID != ""
+	if hasBusinessDetails {
+		m.AddRow(3)
+		m.AddRow(1).WithStyle(&props.Cell{BackgroundColor: pdfTableBg})
+		m.AddRow(3)
+
+		footerDetails := []string{}
+		if settings.BusinessAddress != "" {
+			footerDetails = append(footerDetails, settings.BusinessAddress)
+		}
+		taxParts := []string{}
+		if settings.GSTIN != "" {
+			taxParts = append(taxParts, "GSTIN: "+settings.GSTIN)
+		}
+		if settings.VATNumber != "" {
+			taxParts = append(taxParts, "VAT: "+settings.VATNumber)
+		}
+		if settings.TaxID != "" {
+			taxParts = append(taxParts, "Tax ID: "+settings.TaxID)
+		}
+		if len(taxParts) > 0 {
+			footerDetails = append(footerDetails, strings.Join(taxParts, "  |  "))
+		}
+
+		m.AddRow(12,
+			col.New(12).Add(
+				text.New(data.Settings.BusinessName, props.Text{Size: 8, Style: fontstyle.Bold, Color: pdfMediumText, Align: align.Center}),
+				text.New(strings.Join(footerDetails, "  |  "), props.Text{Size: 7, Color: pdfLightText, Align: align.Center, Top: 4}),
 			),
 		)
 	}
 
 	// Generated timestamp
-	m.AddRow(10,
+	m.AddRow(5)
+	m.AddRow(6,
 		col.New(12).Add(
-			text.New(fmt.Sprintf("Generated on %s", data.GeneratedAt.Format("Jan 02, 2006 15:04 MST")), props.Text{
-				Size:  8,
+			text.New(fmt.Sprintf("Generated on %s", data.GeneratedAt.Format("January 02, 2006 at 3:04 PM MST")), props.Text{
+				Size:  7,
 				Align: align.Center,
-				Color: &props.Color{Red: 128, Green: 128, Blue: 128},
+				Color: pdfLightText,
 			}),
 		),
 	)
