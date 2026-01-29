@@ -124,10 +124,14 @@ func (s *receiptService) GenerateAndStoreReceipt(ctx context.Context, order *mod
 	}
 
 	// Generate receipt data
+	var locale string
+	if req != nil {
+		locale = req.Locale
+	}
 	genReq := &models.ReceiptGenerationRequest{
 		Format:   format,
 		Template: tmpl,
-		Locale:   req.Locale,
+		Locale:   locale,
 	}
 
 	data, contentType, err := s.GenerateReceipt(order, tenantID, genReq)
@@ -872,7 +876,7 @@ func (s *receiptService) addPDFPaymentInfo(m core.Maroto, data *models.ReceiptDa
 				Top:   5,
 				Align: align.Left,
 			}),
-			text.New(fmt.Sprintf("Transaction ID: %s", payment.TransactionID), props.Text{
+			text.New(fmt.Sprintf("Transaction ID: %s", maskTransactionID(payment.TransactionID)), props.Text{
 				Size:  9,
 				Top:   10,
 				Align: align.Left,
@@ -942,7 +946,10 @@ func (s *receiptService) buildCustomerTaxID(order *models.Order) string {
 
 // generateHTML generates an HTML receipt
 func (s *receiptService) generateHTML(data *models.ReceiptData) ([]byte, error) {
-	tmpl, err := template.New("receipt").Parse(receiptHTMLTemplate)
+	funcMap := template.FuncMap{
+		"maskTxnID": maskTransactionID,
+	}
+	tmpl, err := template.New("receipt").Funcs(funcMap).Parse(receiptHTMLTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML template: %w", err)
 	}
@@ -1093,6 +1100,16 @@ func getCurrencySymbol(currency string) string {
 
 func formatCurrency(amount float64, symbol string) string {
 	return fmt.Sprintf("%s%.2f", symbol, amount)
+}
+
+// maskTransactionID masks a transaction ID, showing only the last 4 characters
+// e.g., "txn_1234567890" → "••••••••••7890"
+func maskTransactionID(txnID string) string {
+	if len(txnID) <= 4 {
+		return txnID
+	}
+	masked := strings.Repeat("•", len(txnID)-4) + txnID[len(txnID)-4:]
+	return masked
 }
 
 func calculateTaxRate(taxAmount, subtotal float64) float64 {
@@ -1357,7 +1374,7 @@ const receiptHTMLTemplate = `<!DOCTYPE html>
         <div class="payment-info">
             <h3>Payment Information</h3>
             <p>Method: {{.Order.Payment.Method}}</p>
-            {{if .Order.Payment.TransactionID}}<p>Transaction ID: {{.Order.Payment.TransactionID}}</p>{{end}}
+            {{if .Order.Payment.TransactionID}}<p>Transaction ID: {{maskTxnID .Order.Payment.TransactionID}}</p>{{end}}
             <p>Status: {{.Order.Payment.Status}}</p>
         </div>
         {{end}}
