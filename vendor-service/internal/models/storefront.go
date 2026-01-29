@@ -94,6 +94,7 @@ type StorefrontResolutionResponse struct {
 // StorefrontResolutionData contains tenant info for middleware
 type StorefrontResolutionData struct {
 	StorefrontID   uuid.UUID `json:"storefrontId"`
+	TenantID       string    `json:"tenantId"`
 	VendorID       uuid.UUID `json:"vendorId"`
 	Slug           string    `json:"slug"`
 	Name           string    `json:"name"`

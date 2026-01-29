@@ -307,6 +307,7 @@ func (r *storefrontRepository) ResolveBySlug(slug string) (*models.StorefrontRes
 
 	return &models.StorefrontResolutionData{
 		StorefrontID:   storefront.ID,
+		TenantID:       storefront.Vendor.TenantID,
 		VendorID:       storefront.VendorID,
 		Slug:           storefront.Slug,
 		Name:           storefront.Name,
@@ -339,6 +340,7 @@ func (r *storefrontRepository) ResolveByCustomDomain(domain string) (*models.Sto
 
 	return &models.StorefrontResolutionData{
 		StorefrontID:   storefront.ID,
+		TenantID:       storefront.Vendor.TenantID,
 		VendorID:       storefront.VendorID,
 		Slug:           storefront.Slug,
 		Name:           storefront.Name,
@@ -373,6 +375,7 @@ func (r *storefrontRepository) ResolveBySlugForPublic(slug string) (*models.Stor
 
 	return &models.StorefrontResolutionData{
 		StorefrontID:   storefront.ID,
+		TenantID:       storefront.Vendor.TenantID,
 		VendorID:       storefront.VendorID,
 		Slug:           storefront.Slug,
 		Name:           storefront.Name,
@@ -407,6 +410,7 @@ func (r *storefrontRepository) ResolveByCustomDomainForPublic(domain string) (*m
 
 	return &models.StorefrontResolutionData{
 		StorefrontID:   storefront.ID,
+		TenantID:       storefront.Vendor.TenantID,
 		VendorID:       storefront.VendorID,
 		Slug:           storefront.Slug,
 		Name:           storefront.Name,
