@@ -15,6 +15,8 @@ import (
 type TenantClient interface {
 	// GetTenantSlug returns the tenant slug with caching
 	GetTenantSlug(ctx context.Context, tenantID string) string
+	// GetTenantName returns the tenant/store name with caching
+	GetTenantName(ctx context.Context, tenantID string) string
 	// BuildOrderURL builds the storefront URL for viewing an order
 	BuildOrderURL(ctx context.Context, tenantID, orderID string) string
 	// BuildOrderTrackingURL builds the storefront URL for tracking an order
@@ -67,70 +69,83 @@ func NewTenantClient() TenantClient {
 	}
 }
 
-// GetTenantSlug returns the tenant slug, with caching
-func (c *tenantClient) GetTenantSlug(ctx context.Context, tenantID string) string {
+// getCachedOrFetch returns cached tenant info or fetches from the tenant service
+func (c *tenantClient) getCachedOrFetch(ctx context.Context, tenantID string) *TenantInfo {
 	if tenantID == "" {
-		return "store"
+		return &TenantInfo{Slug: "store"}
 	}
 
 	// Check cache
 	c.mu.RLock()
 	if info, ok := c.cache[tenantID]; ok && time.Since(info.CachedAt) < c.cacheTTL {
 		c.mu.RUnlock()
-		return info.Slug
+		return info
 	}
 	c.mu.RUnlock()
 
 	// Fetch from tenant-service
-	slug := c.fetchTenantSlug(ctx, tenantID)
+	info := c.fetchTenantInfo(ctx, tenantID)
+	info.CachedAt = time.Now()
 
 	// Cache result
 	c.mu.Lock()
-	c.cache[tenantID] = &TenantInfo{
-		ID:       tenantID,
-		Slug:     slug,
-		CachedAt: time.Now(),
-	}
+	c.cache[tenantID] = info
 	c.mu.Unlock()
 
-	return slug
+	return info
 }
 
-func (c *tenantClient) fetchTenantSlug(ctx context.Context, tenantID string) string {
-	url := fmt.Sprintf("%s/internal/tenants/%s", c.baseURL, tenantID)
+// GetTenantSlug returns the tenant slug, with caching
+func (c *tenantClient) GetTenantSlug(ctx context.Context, tenantID string) string {
+	return c.getCachedOrFetch(ctx, tenantID).Slug
+}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+// GetTenantName returns the tenant/store name, with caching
+func (c *tenantClient) GetTenantName(ctx context.Context, tenantID string) string {
+	return c.getCachedOrFetch(ctx, tenantID).Name
+}
+
+func (c *tenantClient) fetchTenantInfo(ctx context.Context, tenantID string) *TenantInfo {
+	reqURL := fmt.Sprintf("%s/internal/tenants/%s", c.baseURL, tenantID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		return "store" // fallback
+		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
 	}
 	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "store" // fallback
+		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "store" // fallback
+		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
 	}
 
 	var result struct {
 		Success bool `json:"success"`
 		Data    struct {
 			Slug string `json:"slug"`
+			Name string `json:"name"`
 		} `json:"data"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "store"
+		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
 	}
 
-	if result.Data.Slug == "" {
-		return "store"
+	info := &TenantInfo{
+		ID:   tenantID,
+		Slug: result.Data.Slug,
+		Name: result.Data.Name,
+	}
+	if info.Slug == "" {
+		info.Slug = "store"
 	}
 
-	return result.Data.Slug
+	return info
 }
 
 // BuildOrderURL builds the storefront URL for viewing an order

@@ -7,18 +7,28 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	goimage "image"
+	"image/color"
+	"image/png"
+	"io"
 	"log"
+	"math"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	_ "image/jpeg"
+
 	"github.com/google/uuid"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	mimage "github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
@@ -58,9 +68,10 @@ type ReceiptService interface {
 }
 
 type receiptService struct {
-	settingsRepo *repository.ReceiptSettingsRepository
-	documentRepo *repository.ReceiptDocumentRepository
+	settingsRepo   *repository.ReceiptSettingsRepository
+	documentRepo   *repository.ReceiptDocumentRepository
 	documentClient clients.DocumentClient
+	tenantClient   clients.TenantClient
 	storageConfig  *models.ReceiptStorageConfig
 }
 
@@ -69,6 +80,7 @@ func NewReceiptService(
 	settingsRepo *repository.ReceiptSettingsRepository,
 	documentRepo *repository.ReceiptDocumentRepository,
 	documentClient clients.DocumentClient,
+	tenantClient clients.TenantClient,
 ) ReceiptService {
 	// Load storage configuration from environment
 	bucket := os.Getenv("RECEIPT_STORAGE_BUCKET")
@@ -90,6 +102,7 @@ func NewReceiptService(
 		settingsRepo:   settingsRepo,
 		documentRepo:   documentRepo,
 		documentClient: documentClient,
+		tenantClient:   tenantClient,
 		storageConfig: &models.ReceiptStorageConfig{
 			Bucket:                bucket,
 			PathPrefix:            pathPrefix,
@@ -486,7 +499,6 @@ func (s *receiptService) generatePDF(data *models.ReceiptData) ([]byte, error) {
 		Build()
 
 	m := maroto.New(cfg)
-	doc := m.GetStructure()
 
 	// Add header with logo and business info
 	s.addPDFHeader(m, data)
@@ -512,7 +524,6 @@ func (s *receiptService) generatePDF(data *models.ReceiptData) ([]byte, error) {
 	s.addPDFFooter(m, data)
 
 	// Generate PDF
-	_ = doc // Suppress unused variable warning
 	pdfDoc, err := m.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate PDF: %w", err)
@@ -521,34 +532,136 @@ func (s *receiptService) generatePDF(data *models.ReceiptData) ([]byte, error) {
 	return pdfDoc.GetBytes(), nil
 }
 
+// fetchAndCircleCropLogo downloads a logo from URL and crops it into a circle, returning PNG bytes
+func (s *receiptService) fetchAndCircleCropLogo(logoURL string) ([]byte, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(logoURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch logo: status %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024)) // 5MB limit
+	if err != nil {
+		return nil, err
+	}
+
+	src, _, err := goimage.Decode(bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	// Crop to circle
+	bounds := src.Bounds()
+	size := bounds.Dx()
+	if bounds.Dy() < size {
+		size = bounds.Dy()
+	}
+
+	// Create a square RGBA image
+	dst := goimage.NewRGBA(goimage.Rect(0, 0, size, size))
+	center := float64(size) / 2.0
+	radius := center
+
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dx := float64(x) - center
+			dy := float64(y) - center
+			if math.Sqrt(dx*dx+dy*dy) <= radius {
+				dst.Set(x, y, src.At(bounds.Min.X+x, bounds.Min.Y+y))
+			} else {
+				dst.Set(x, y, color.Transparent)
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // addPDFHeader adds the header section to the PDF
 func (s *receiptService) addPDFHeader(m core.Maroto, data *models.ReceiptData) {
-	m.AddRow(30,
-		col.New(6).Add(
-			text.New(data.Settings.BusinessName, props.Text{
-				Size:  16,
-				Style: fontstyle.Bold,
-				Align: align.Left,
-			}),
-			text.New(data.Settings.BusinessAddress, props.Text{
-				Size:  9,
-				Top:   8,
-				Align: align.Left,
-			}),
-		),
-		col.New(6).Add(
-			text.New("RECEIPT", props.Text{
-				Size:  20,
-				Style: fontstyle.Bold,
-				Align: align.Right,
-			}),
-			text.New(fmt.Sprintf("# %s", data.ReceiptNumber), props.Text{
-				Size:  10,
-				Top:   8,
-				Align: align.Right,
-			}),
-		),
-	)
+	// Try to add logo if available
+	var logoBytes []byte
+	if data.Settings.LogoURL != "" {
+		var err error
+		logoBytes, err = s.fetchAndCircleCropLogo(data.Settings.LogoURL)
+		if err != nil {
+			log.Printf("WARNING: Failed to fetch logo for receipt: %v", err)
+		}
+	}
+
+	if logoBytes != nil {
+		// Header with logo
+		m.AddRow(30,
+			col.New(2).Add(
+				mimage.NewFromBytes(logoBytes, extension.Png, props.Rect{
+					Center:  true,
+					Percent: 90,
+				}),
+			),
+			col.New(4).Add(
+				text.New(data.Settings.BusinessName, props.Text{
+					Size:  16,
+					Style: fontstyle.Bold,
+					Align: align.Left,
+					Top:   3,
+				}),
+				text.New(data.Settings.BusinessAddress, props.Text{
+					Size:  9,
+					Top:   11,
+					Align: align.Left,
+				}),
+			),
+			col.New(6).Add(
+				text.New("RECEIPT", props.Text{
+					Size:  20,
+					Style: fontstyle.Bold,
+					Align: align.Right,
+				}),
+				text.New(fmt.Sprintf("# %s", data.ReceiptNumber), props.Text{
+					Size:  10,
+					Top:   8,
+					Align: align.Right,
+				}),
+			),
+		)
+	} else {
+		// Header without logo
+		m.AddRow(30,
+			col.New(6).Add(
+				text.New(data.Settings.BusinessName, props.Text{
+					Size:  16,
+					Style: fontstyle.Bold,
+					Align: align.Left,
+				}),
+				text.New(data.Settings.BusinessAddress, props.Text{
+					Size:  9,
+					Top:   8,
+					Align: align.Left,
+				}),
+			),
+			col.New(6).Add(
+				text.New("RECEIPT", props.Text{
+					Size:  20,
+					Style: fontstyle.Bold,
+					Align: align.Right,
+				}),
+				text.New(fmt.Sprintf("# %s", data.ReceiptNumber), props.Text{
+					Size:  10,
+					Top:   8,
+					Align: align.Right,
+				}),
+			),
+		)
+	}
 
 	// Add line separator
 	m.AddRow(5, line.NewCol(12))
@@ -985,7 +1098,22 @@ func (s *receiptService) GetOrCreateSettings(tenantID string) (*models.ReceiptSe
 	}
 
 	if settings != nil {
+		// If business name is still the default, try to fetch the actual store name
+		if settings.BusinessName == "Your Store" && s.tenantClient != nil {
+			if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
+				settings.BusinessName = name
+				_ = s.settingsRepo.Update(settings)
+			}
+		}
 		return settings, nil
+	}
+
+	// Fetch actual store name from tenant service
+	businessName := "Your Store"
+	if s.tenantClient != nil {
+		if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
+			businessName = name
+		}
 	}
 
 	// Create default settings
@@ -995,7 +1123,7 @@ func (s *receiptService) GetOrCreateSettings(tenantID string) (*models.ReceiptSe
 		DefaultTemplate:     models.ReceiptTemplateDefault,
 		PrimaryColor:        "#1a73e8",
 		SecondaryColor:      "#5f6368",
-		BusinessName:        "Your Store",
+		BusinessName:        businessName,
 		ShowTaxBreakdown:    true,
 		ShowHSNSACCodes:     true,
 		ShowPaymentDetails:  true,
