@@ -201,10 +201,12 @@ func main() {
 	}))
 
 	// Initialize Istio auth middleware for Keycloak JWT validation in production
+	// Note: /api/v1/storefront/ is skipped because it uses CustomerAuthMiddleware
+	// which handles both JWT tokens and X-Internal-Service header for BFF calls
 	istioAuth := gosharedmw.IstioAuth(gosharedmw.IstioAuthConfig{
 		RequireAuth:        true,
 		AllowLegacyHeaders: false,
-		SkipPaths:          []string{"/health", "/ready", "/metrics", "/internal/"},
+		SkipPaths:          []string{"/health", "/ready", "/metrics", "/internal/", "/api/v1/storefront/"},
 	})
 
 	// Authentication middleware - environment-aware
