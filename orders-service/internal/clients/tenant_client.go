@@ -106,22 +106,38 @@ func (c *tenantClient) GetTenantName(ctx context.Context, tenantID string) strin
 }
 
 func (c *tenantClient) fetchTenantInfo(ctx context.Context, tenantID string) *TenantInfo {
-	reqURL := fmt.Sprintf("%s/internal/tenants/%s", c.baseURL, tenantID)
+	// Try by ID first, then by slug as fallback
+	info := c.fetchTenantFromAPI(ctx, fmt.Sprintf("%s/internal/tenants/%s", c.baseURL, tenantID))
+	if info != nil {
+		info.ID = tenantID
+		return info
+	}
 
+	// Fallback: try treating tenantID as a slug
+	info = c.fetchTenantFromAPI(ctx, fmt.Sprintf("%s/internal/tenants/by-slug/%s", c.baseURL, tenantID))
+	if info != nil {
+		info.ID = tenantID
+		return info
+	}
+
+	return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
+}
+
+func (c *tenantClient) fetchTenantFromAPI(ctx context.Context, reqURL string) *TenantInfo {
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
+		return nil
 	}
 	req.Header.Set("X-Internal-Service", "orders-service")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
+		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
+		return nil
 	}
 
 	var result struct {
@@ -133,11 +149,14 @@ func (c *tenantClient) fetchTenantInfo(ctx context.Context, tenantID string) *Te
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return &TenantInfo{ID: tenantID, Slug: "store", Name: ""}
+		return nil
+	}
+
+	if result.Data.Slug == "" && result.Data.Name == "" {
+		return nil
 	}
 
 	info := &TenantInfo{
-		ID:   tenantID,
 		Slug: result.Data.Slug,
 		Name: result.Data.Name,
 	}

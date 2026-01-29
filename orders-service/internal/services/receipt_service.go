@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	goimage "image"
@@ -348,6 +349,20 @@ func (s *receiptService) GenerateReceipt(order *models.Order, tenantID string, r
 		return nil, "", fmt.Errorf("failed to get receipt settings: %w", err)
 	}
 
+	// Always fetch the latest store name from tenant service to keep receipts current
+	if s.tenantClient != nil {
+		if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
+			settings.BusinessName = name
+		}
+	}
+
+	// Fetch logo URL from settings-service if not already set
+	if settings.LogoURL == "" {
+		if logoURL := s.fetchStoreLogoURL(tenantID); logoURL != "" {
+			settings.LogoURL = logoURL
+		}
+	}
+
 	// Set defaults
 	format := models.ReceiptFormatPDF
 	if req != nil && req.Format != "" {
@@ -528,6 +543,49 @@ func (s *receiptService) generatePDF(data *models.ReceiptData) ([]byte, error) {
 	}
 
 	return pdfDoc.GetBytes(), nil
+}
+
+// fetchStoreLogoURL fetches the store logo URL from the settings-service
+func (s *receiptService) fetchStoreLogoURL(tenantID string) string {
+	settingsURL := os.Getenv("SETTINGS_SERVICE_URL")
+	if settingsURL == "" {
+		settingsURL = "http://settings-service:8085"
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/public/settings/context?applicationId=admin-portal&scope=application&tenantId=%s",
+		settingsURL, tenantID)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(reqURL)
+	if err != nil {
+		log.Printf("WARNING: Failed to fetch store settings for logo: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Branding *struct {
+				General *struct {
+					LogoURL string `json:"logoUrl"`
+				} `json:"general"`
+			} `json:"branding"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ""
+	}
+
+	if result.Data.Branding != nil && result.Data.Branding.General != nil {
+		return result.Data.Branding.General.LogoURL
+	}
+	return ""
 }
 
 // fetchAndCircleCropLogo downloads a logo from URL and crops it into a circle, returning PNG bytes
@@ -1024,13 +1082,6 @@ func (s *receiptService) GetOrCreateSettings(tenantID string) (*models.ReceiptSe
 	}
 
 	if settings != nil {
-		// If business name is still the default, try to fetch the actual store name
-		if settings.BusinessName == "Your Store" && s.tenantClient != nil {
-			if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
-				settings.BusinessName = name
-				_ = s.settingsRepo.Update(settings)
-			}
-		}
 		return settings, nil
 	}
 
