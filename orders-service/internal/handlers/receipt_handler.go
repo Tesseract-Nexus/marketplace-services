@@ -580,6 +580,22 @@ func (h *ReceiptHandler) GenerateAndStoreReceipt(c *gin.Context) {
 		return
 	}
 
+	// Update the order's receipt fields so they appear in order list/detail responses
+	if order.ReceiptNumber == "" || req.ForceRegenerate {
+		now := receiptDoc.CreatedAt
+		updateReq := services.UpdateOrderRequest{
+			ReceiptNumber:      receiptDoc.ReceiptNumber,
+			InvoiceNumber:      receiptDoc.InvoiceNumber,
+			ReceiptDocumentID:  &receiptDoc.ID,
+			ReceiptShortURL:    receiptDoc.ShortURL,
+			ReceiptGeneratedAt: &now,
+		}
+		if _, err := h.orderService.UpdateOrder(orderID, updateReq, tenantID); err != nil {
+			// Log but don't fail the response — receipt was already generated
+			fmt.Printf("WARNING: Failed to update order receipt fields: %v\n", err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, receiptDoc)
 }
 

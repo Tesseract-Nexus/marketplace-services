@@ -234,12 +234,13 @@ type ReceiptStorageConfig struct {
 
 // GenerateReceiptAndStoreRequest is the request to generate and store a receipt
 type GenerateReceiptAndStoreRequest struct {
-	OrderID      uuid.UUID           `json:"orderId" binding:"required"`
-	DocumentType ReceiptDocumentType `json:"documentType" binding:"omitempty"`
-	Format       ReceiptFormat       `json:"format" binding:"omitempty"`
-	Template     ReceiptTemplate     `json:"template" binding:"omitempty"`
-	Locale       string              `json:"locale" binding:"omitempty"`
-	SendEmail    bool                `json:"sendEmail"`
+	OrderID         uuid.UUID           `json:"orderId" binding:"required"`
+	DocumentType    ReceiptDocumentType `json:"documentType" binding:"omitempty"`
+	Format          ReceiptFormat       `json:"format" binding:"omitempty"`
+	Template        ReceiptTemplate     `json:"template" binding:"omitempty"`
+	Locale          string              `json:"locale" binding:"omitempty"`
+	SendEmail       bool                `json:"sendEmail"`
+	ForceRegenerate bool                `json:"forceRegenerate"` // If true, regenerate even if receipt exists
 }
 
 // ReceiptDownloadResponse is the response when accessing a receipt via short URL

@@ -105,8 +105,18 @@ func (s *receiptService) GetStorageConfig() *models.ReceiptStorageConfig {
 	return s.storageConfig
 }
 
-// GenerateAndStoreReceipt generates a receipt and stores it in the document service
+// GenerateAndStoreReceipt generates a receipt and stores it in the document service.
+// If a receipt already exists for this order, it returns the existing one unless force regeneration is requested.
 func (s *receiptService) GenerateAndStoreReceipt(ctx context.Context, order *models.Order, tenantID string, req *models.GenerateReceiptAndStoreRequest) (*models.ReceiptDocument, error) {
+	// Check if a receipt already exists for this order
+	existing, err := s.documentRepo.GetLatestByOrderID(order.ID, tenantID)
+	if err != nil {
+		log.Printf("WARNING: Failed to check existing receipt: %v", err)
+	}
+	if existing != nil && (req == nil || !req.ForceRegenerate) {
+		return existing, nil
+	}
+
 	// Set defaults
 	docType := models.ReceiptDocumentTypeReceipt
 	if req != nil && req.DocumentType != "" {

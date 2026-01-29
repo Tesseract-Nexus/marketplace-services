@@ -103,7 +103,12 @@ type CreateOrderDiscountRequest struct {
 }
 
 type UpdateOrderRequest struct {
-	Notes string `json:"notes"`
+	Notes              string     `json:"notes"`
+	ReceiptNumber      string     `json:"receiptNumber,omitempty"`
+	InvoiceNumber      string     `json:"invoiceNumber,omitempty"`
+	ReceiptDocumentID  *uuid.UUID `json:"receiptDocumentId,omitempty"`
+	ReceiptShortURL    string     `json:"receiptShortUrl,omitempty"`
+	ReceiptGeneratedAt *time.Time `json:"receiptGeneratedAt,omitempty"`
 }
 
 type OrderListFilters struct {
@@ -471,7 +476,26 @@ func (s *orderService) UpdateOrder(id uuid.UUID, req UpdateOrderRequest, tenantI
 	}
 
 	// Update fields
-	order.Notes = req.Notes
+	if req.Notes != "" {
+		order.Notes = req.Notes
+	}
+
+	// Update receipt fields if provided
+	if req.ReceiptNumber != "" {
+		order.ReceiptNumber = req.ReceiptNumber
+	}
+	if req.InvoiceNumber != "" {
+		order.InvoiceNumber = req.InvoiceNumber
+	}
+	if req.ReceiptDocumentID != nil {
+		order.ReceiptDocumentID = req.ReceiptDocumentID
+	}
+	if req.ReceiptShortURL != "" {
+		order.ReceiptShortURL = req.ReceiptShortURL
+	}
+	if req.ReceiptGeneratedAt != nil {
+		order.ReceiptGeneratedAt = req.ReceiptGeneratedAt
+	}
 
 	if err := s.orderRepo.Update(order); err != nil {
 		return nil, fmt.Errorf("failed to update order: %w", err)
