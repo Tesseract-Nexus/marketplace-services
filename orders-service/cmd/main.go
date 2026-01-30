@@ -203,7 +203,7 @@ func main() {
 	orderService := services.NewOrderService(orderRepo, returnRepo, cancellationSettingsService, productsClient, taxClient, customersClient, notificationClient, tenantClient, shippingClient, eventsPublisher, guestTokenSvc)
 	returnService := services.NewReturnService(returnRepo, orderRepo, paymentClient)
 	paymentConfigService := services.NewPaymentConfigService(db, eventsPublisher)
-	receiptService := services.NewReceiptService(receiptSettingsRepo, receiptDocumentRepo, documentClient, tenantClient)
+	receiptService := services.NewReceiptService(receiptSettingsRepo, receiptDocumentRepo, documentClient, tenantClient, redisClient)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)

@@ -22,6 +22,7 @@ import (
 	_ "image/jpeg"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	mimage "github.com/johnfercher/maroto/v2/pkg/components/image"
@@ -72,6 +73,7 @@ type receiptService struct {
 	documentRepo   *repository.ReceiptDocumentRepository
 	documentClient clients.DocumentClient
 	tenantClient   clients.TenantClient
+	redisClient    *redis.Client
 	storageConfig  *models.ReceiptStorageConfig
 }
 
@@ -81,6 +83,7 @@ func NewReceiptService(
 	documentRepo *repository.ReceiptDocumentRepository,
 	documentClient clients.DocumentClient,
 	tenantClient clients.TenantClient,
+	redisClient ...*redis.Client,
 ) ReceiptService {
 	// Load storage configuration from environment
 	bucket := os.Getenv("RECEIPT_STORAGE_BUCKET")
@@ -98,7 +101,7 @@ func NewReceiptService(
 		shortURLBase = "/r" // Default short URL prefix
 	}
 
-	return &receiptService{
+	svc := &receiptService{
 		settingsRepo:   settingsRepo,
 		documentRepo:   documentRepo,
 		documentClient: documentClient,
@@ -111,6 +114,10 @@ func NewReceiptService(
 			AutoGenerateOnPayment: true,
 		},
 	}
+	if len(redisClient) > 0 && redisClient[0] != nil {
+		svc.redisClient = redisClient[0]
+	}
+	return svc
 }
 
 // GetStorageConfig returns the receipt storage configuration
@@ -341,8 +348,36 @@ func (s *receiptService) GetReceiptDocuments(ctx context.Context, orderID uuid.U
 	return s.documentRepo.GetByOrderID(orderID, tenantID)
 }
 
+// receiptCacheKey builds a Redis cache key for a receipt
+func (s *receiptService) receiptCacheKey(tenantID string, order *models.Order, format models.ReceiptFormat) string {
+	// Include UpdatedAt so cache invalidates when order changes
+	updatedAt := order.UpdatedAt.Unix()
+	return fmt.Sprintf("receipt:%s:%s:%s:%d", tenantID, order.ID.String(), string(format), updatedAt)
+}
+
 // GenerateReceipt generates a receipt for an order
 func (s *receiptService) GenerateReceipt(order *models.Order, tenantID string, req *models.ReceiptGenerationRequest) ([]byte, string, error) {
+	// Determine format early for cache key
+	format := models.ReceiptFormatPDF
+	if req != nil && req.Format != "" {
+		format = req.Format
+	}
+
+	contentType := "application/pdf"
+	if format == models.ReceiptFormatHTML {
+		contentType = "text/html"
+	}
+
+	// Check Redis cache
+	if s.redisClient != nil {
+		cacheKey := s.receiptCacheKey(tenantID, order, format)
+		cached, err := s.redisClient.Get(context.Background(), cacheKey).Bytes()
+		if err == nil && len(cached) > 0 {
+			log.Printf("Receipt cache HIT for order %s", order.ID.String())
+			return cached, contentType, nil
+		}
+	}
+
 	// Get receipt settings
 	settings, err := s.GetOrCreateSettings(tenantID)
 	if err != nil {
@@ -363,12 +398,6 @@ func (s *receiptService) GenerateReceipt(order *models.Order, tenantID string, r
 		}
 	}
 
-	// Set defaults
-	format := models.ReceiptFormatPDF
-	if req != nil && req.Format != "" {
-		format = req.Format
-	}
-
 	tmpl := settings.DefaultTemplate
 	if req != nil && req.Template != "" {
 		tmpl = req.Template
@@ -384,21 +413,26 @@ func (s *receiptService) GenerateReceipt(order *models.Order, tenantID string, r
 
 	// Generate based on format
 	var data []byte
-	var contentType string
 
 	switch format {
 	case models.ReceiptFormatPDF:
 		data, err = s.generatePDF(receiptData)
-		contentType = "application/pdf"
 	case models.ReceiptFormatHTML:
 		data, err = s.generateHTML(receiptData)
-		contentType = "text/html"
 	default:
 		return nil, "", fmt.Errorf("unsupported format: %s", format)
 	}
 
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate receipt: %w", err)
+	}
+
+	// Store in Redis cache (30 min TTL)
+	if s.redisClient != nil {
+		cacheKey := s.receiptCacheKey(tenantID, order, format)
+		if err := s.redisClient.Set(context.Background(), cacheKey, data, 30*time.Minute).Err(); err != nil {
+			log.Printf("WARNING: Failed to cache receipt: %v", err)
+		}
 	}
 
 	return data, contentType, nil
