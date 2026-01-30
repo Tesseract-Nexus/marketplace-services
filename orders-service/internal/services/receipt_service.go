@@ -1108,43 +1108,67 @@ func (s *receiptService) GetReceiptSettings(tenantID string) (*models.ReceiptSet
 	return s.settingsRepo.GetByTenantID(tenantID)
 }
 
-// GetOrCreateSettings gets or creates default settings for a tenant
+// settingsCacheKey returns the Redis key for tenant receipt settings
+func (s *receiptService) settingsCacheKey(tenantID string) string {
+	return fmt.Sprintf("receipt_settings:%s", tenantID)
+}
+
+// GetOrCreateSettings gets or creates default settings for a tenant.
+// Uses Redis to avoid hitting the DB on every receipt generation.
 func (s *receiptService) GetOrCreateSettings(tenantID string) (*models.ReceiptSettings, error) {
+	// Check Redis cache first
+	if s.redisClient != nil {
+		cached, err := s.redisClient.Get(context.Background(), s.settingsCacheKey(tenantID)).Bytes()
+		if err == nil && len(cached) > 0 {
+			var settings models.ReceiptSettings
+			if err := json.Unmarshal(cached, &settings); err == nil {
+				return &settings, nil
+			}
+		}
+	}
+
 	settings, err := s.settingsRepo.GetByTenantID(tenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	if settings != nil {
-		return settings, nil
-	}
+	if settings == nil {
+		// Fetch actual store name from tenant service
+		businessName := "Your Store"
+		if s.tenantClient != nil {
+			if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
+				businessName = name
+			}
+		}
 
-	// Fetch actual store name from tenant service
-	businessName := "Your Store"
-	if s.tenantClient != nil {
-		if name := s.tenantClient.GetTenantName(context.Background(), tenantID); name != "" {
-			businessName = name
+		// Create default settings
+		settings = &models.ReceiptSettings{
+			ID:                  uuid.New(),
+			TenantID:            tenantID,
+			DefaultTemplate:     models.ReceiptTemplateDefault,
+			PrimaryColor:        "#1a73e8",
+			SecondaryColor:      "#5f6368",
+			BusinessName:        businessName,
+			ShowTaxBreakdown:    true,
+			ShowHSNSACCodes:     true,
+			ShowPaymentDetails:  true,
+			ShowShippingDetails: true,
+			IncludeQRCode:       true,
+			FooterText:          "Thank you for your purchase!",
+		}
+
+		if err := s.settingsRepo.Create(settings); err != nil {
+			return nil, err
 		}
 	}
 
-	// Create default settings
-	settings = &models.ReceiptSettings{
-		ID:                  uuid.New(),
-		TenantID:            tenantID,
-		DefaultTemplate:     models.ReceiptTemplateDefault,
-		PrimaryColor:        "#1a73e8",
-		SecondaryColor:      "#5f6368",
-		BusinessName:        businessName,
-		ShowTaxBreakdown:    true,
-		ShowHSNSACCodes:     true,
-		ShowPaymentDetails:  true,
-		ShowShippingDetails: true,
-		IncludeQRCode:       true,
-		FooterText:          "Thank you for your purchase!",
-	}
-
-	if err := s.settingsRepo.Create(settings); err != nil {
-		return nil, err
+	// Cache in Redis (2 hour TTL — settings change infrequently)
+	if s.redisClient != nil {
+		if data, err := json.Marshal(settings); err == nil {
+			if err := s.redisClient.Set(context.Background(), s.settingsCacheKey(tenantID), data, 2*time.Hour).Err(); err != nil {
+				log.Printf("WARNING: Failed to cache receipt settings: %v", err)
+			}
+		}
 	}
 
 	return settings, nil
@@ -1224,6 +1248,13 @@ func (s *receiptService) UpdateReceiptSettings(tenantID string, req *models.Rece
 
 	if err := s.settingsRepo.Update(settings); err != nil {
 		return nil, err
+	}
+
+	// Invalidate Redis cache so next receipt generation picks up changes
+	if s.redisClient != nil {
+		if err := s.redisClient.Del(context.Background(), s.settingsCacheKey(tenantID)).Err(); err != nil {
+			log.Printf("WARNING: Failed to invalidate receipt settings cache: %v", err)
+		}
 	}
 
 	return settings, nil

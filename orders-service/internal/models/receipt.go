@@ -164,8 +164,8 @@ type GuestReceiptRequest struct {
 // ReceiptDocument represents a generated and stored receipt/invoice document
 type ReceiptDocument struct {
 	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	TenantID  string    `json:"tenantId" gorm:"type:varchar(255);not null;index:idx_receipt_docs_tenant"`
-	OrderID   uuid.UUID `json:"orderId" gorm:"type:uuid;not null;index:idx_receipt_docs_order"`
+	TenantID  string    `json:"tenantId" gorm:"type:varchar(255);not null;index:idx_receipt_docs_tenant;index:idx_receipt_docs_tenant_order"`
+	OrderID   uuid.UUID `json:"orderId" gorm:"type:uuid;not null;index:idx_receipt_docs_order;index:idx_receipt_docs_tenant_order"`
 	VendorID  string    `json:"vendorId,omitempty" gorm:"type:varchar(255);index:idx_receipt_docs_vendor"`
 
 	// Receipt/Invoice identifiers
