@@ -39,6 +39,27 @@ func TenantMiddleware() gin.HandlerFunc {
 	}
 }
 
+// OptionalTenantMiddleware extracts tenant ID from Istio JWT claim headers
+// Used for internal service-to-service routes where tenant context is optional
+// Handlers are responsible for validating tenant_id if required
+func OptionalTenantMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if tenant_id was already set
+		tenantID := c.GetString("tenant_id")
+
+		// Fallback to Istio JWT claim header
+		if tenantID == "" {
+			tenantID = c.GetHeader("x-jwt-claim-tenant-id")
+		}
+
+		// Set tenant ID in context if provided (don't abort if missing)
+		if tenantID != "" {
+			c.Set("tenant_id", tenantID)
+		}
+		c.Next()
+	}
+}
+
 // VendorMiddleware extracts vendor ID from Istio JWT claim headers for marketplace isolation
 // This is optional - used for Tenant -> Vendor -> Staff hierarchy
 func VendorMiddleware() gin.HandlerFunc {

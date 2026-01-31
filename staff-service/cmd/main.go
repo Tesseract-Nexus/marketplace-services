@@ -269,7 +269,8 @@ func main() {
 
 	// Internal service-to-service routes (no authentication required)
 	// These are called by other services within the cluster
-	internalRoutes := router.Group("/api/v1/internal")
+	// OptionalTenantMiddleware extracts x-jwt-claim-tenant-id header for service-to-service calls
+	internalRoutes := router.Group("/api/v1/internal", middleware.OptionalTenantMiddleware())
 	{
 		// Bootstrap owner for a new tenant - called by tenant-service during onboarding
 		internalRoutes.POST("/bootstrap-owner", rbacHandler.BootstrapOwner)
