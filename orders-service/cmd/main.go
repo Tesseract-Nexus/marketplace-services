@@ -604,7 +604,7 @@ func setupRouter(cfg *config.Config, orderHandler *handlers.OrderHandler, return
 		// View own orders - customers can only see their own orders
 		customerStorefront.GET("/orders", orderHandler.ListCustomerOrders)
 		customerStorefront.GET("/orders/:id", orderHandler.GetCustomerOrder)
-		customerStorefront.GET("/orders/:id/tracking", orderHandler.GetOrderTracking)
+		customerStorefront.GET("/orders/:id/tracking", orderHandler.GetCustomerOrderTracking)
 		// Download receipt for own orders
 		customerStorefront.GET("/orders/:id/receipt", receiptHandler.GetCustomerOrderReceipt)
 	}

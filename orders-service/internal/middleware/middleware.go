@@ -222,52 +222,68 @@ type JWTPayload struct {
 
 // CustomerAuthMiddleware validates customer JWT tokens and extracts customer ID
 // This middleware is for public/storefront routes where customers access their own orders
+// Prefers Istio-injected x-jwt-claim-* headers, falls back to manual JWT decode
 func CustomerAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
-			return
-		}
+		// Try Istio-injected JWT claim headers first (preferred in production)
+		customerID := c.GetHeader("x-jwt-claim-customer-id")
+		keycloakSub := c.GetHeader("x-jwt-claim-sub")
+		email := c.GetHeader("x-jwt-claim-email")
+		tenantID := c.GetHeader("x-jwt-claim-tenant-id")
 
-		// Extract token from "Bearer <token>"
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
-			c.Abort()
-			return
-		}
-
-		token := parts[1]
-
-		// Decode JWT payload (base64url decode the middle part)
-		tokenParts := strings.Split(token, ".")
-		if len(tokenParts) != 3 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT format"})
-			c.Abort()
-			return
-		}
-
-		// Base64url decode the payload
-		payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload"})
-			c.Abort()
-			return
-		}
-
-		var jwtPayload JWTPayload
-		if err := json.Unmarshal(payload, &jwtPayload); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload structure"})
-			c.Abort()
-			return
-		}
-
-		// Extract customer ID from token (try both sub and customer_id fields)
-		customerID := jwtPayload.CustomerID
+		// Use customer_id claim if available, otherwise fall back to sub
 		if customerID == "" {
-			customerID = jwtPayload.Sub
+			customerID = keycloakSub
+		}
+
+		// Fall back to manual JWT base64 decode if Istio headers are missing
+		if customerID == "" {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+				c.Abort()
+				return
+			}
+
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+				c.Abort()
+				return
+			}
+
+			token := parts[1]
+			tokenParts := strings.Split(token, ".")
+			if len(tokenParts) != 3 {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT format"})
+				c.Abort()
+				return
+			}
+
+			payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload"})
+				c.Abort()
+				return
+			}
+
+			var jwtPayload JWTPayload
+			if err := json.Unmarshal(payload, &jwtPayload); err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT payload structure"})
+				c.Abort()
+				return
+			}
+
+			customerID = jwtPayload.CustomerID
+			if customerID == "" {
+				customerID = jwtPayload.Sub
+			}
+			if email == "" {
+				email = jwtPayload.Email
+			}
+			if tenantID == "" {
+				tenantID = jwtPayload.TenantID
+			}
 		}
 
 		if customerID == "" {
@@ -276,13 +292,12 @@ func CustomerAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Set customer ID in context
 		c.Set("customer_id", customerID)
-		c.Set("customer_email", jwtPayload.Email)
+		c.Set("customer_email", email)
 
-		// Also set tenant_id from token if present and not already set
-		if jwtPayload.TenantID != "" && c.GetString("tenant_id") == "" {
-			c.Set("tenant_id", jwtPayload.TenantID)
+		// Set tenant_id from token if not already set
+		if tenantID != "" && c.GetString("tenant_id") == "" {
+			c.Set("tenant_id", tenantID)
 		}
 
 		c.Next()
@@ -291,55 +306,71 @@ func CustomerAuthMiddleware() gin.HandlerFunc {
 
 // OptionalCustomerAuth extracts customer info from JWT if present, but doesn't require it
 // This is useful for guest checkout where authentication is optional
+// Prefers Istio-injected x-jwt-claim-* headers, falls back to manual JWT decode
 func OptionalCustomerAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			// No auth header - continue as guest
-			c.Next()
-			return
-		}
+		// Try Istio-injected JWT claim headers first
+		customerID := c.GetHeader("x-jwt-claim-customer-id")
+		keycloakSub := c.GetHeader("x-jwt-claim-sub")
+		email := c.GetHeader("x-jwt-claim-email")
+		tenantID := c.GetHeader("x-jwt-claim-tenant-id")
 
-		// Try to extract customer info
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			// Invalid format - continue as guest
-			c.Next()
-			return
-		}
-
-		token := parts[1]
-		tokenParts := strings.Split(token, ".")
-		if len(tokenParts) != 3 {
-			c.Next()
-			return
-		}
-
-		payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
-		if err != nil {
-			c.Next()
-			return
-		}
-
-		var jwtPayload JWTPayload
-		if err := json.Unmarshal(payload, &jwtPayload); err != nil {
-			c.Next()
-			return
-		}
-
-		// Extract and set customer ID if present
-		customerID := jwtPayload.CustomerID
 		if customerID == "" {
-			customerID = jwtPayload.Sub
+			customerID = keycloakSub
 		}
+
+		// Fall back to manual JWT decode if Istio headers missing
+		if customerID == "" {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader == "" {
+				c.Next()
+				return
+			}
+
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				c.Next()
+				return
+			}
+
+			token := parts[1]
+			tokenParts := strings.Split(token, ".")
+			if len(tokenParts) != 3 {
+				c.Next()
+				return
+			}
+
+			payload, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+			if err != nil {
+				c.Next()
+				return
+			}
+
+			var jwtPayload JWTPayload
+			if err := json.Unmarshal(payload, &jwtPayload); err != nil {
+				c.Next()
+				return
+			}
+
+			customerID = jwtPayload.CustomerID
+			if customerID == "" {
+				customerID = jwtPayload.Sub
+			}
+			if email == "" {
+				email = jwtPayload.Email
+			}
+			if tenantID == "" {
+				tenantID = jwtPayload.TenantID
+			}
+		}
+
 		if customerID != "" {
 			c.Set("customer_id", customerID)
-			c.Set("customer_email", jwtPayload.Email)
+			c.Set("customer_email", email)
 		}
 
-		// Set tenant_id from token if present and not already set
-		if jwtPayload.TenantID != "" && c.GetString("tenant_id") == "" {
-			c.Set("tenant_id", jwtPayload.TenantID)
+		if tenantID != "" && c.GetString("tenant_id") == "" {
+			c.Set("tenant_id", tenantID)
 		}
 
 		c.Next()

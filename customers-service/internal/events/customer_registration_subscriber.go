@@ -190,9 +190,11 @@ func (s *CustomerRegistrationSubscriber) handleRegistrationEvent(ctx context.Con
 	}
 
 	// Create customer record from event data
+	// Store the Keycloak sub (event.CustomerID) as UserID for identity resolution
 	customer := &models.Customer{
 		ID:        customerID,
 		TenantID:  event.TenantID,
+		UserID:    &customerID, // Keycloak sub — enables future lookup by user_id
 		Email:     event.CustomerEmail,
 		FirstName: event.FirstName,
 		LastName:  event.LastName,

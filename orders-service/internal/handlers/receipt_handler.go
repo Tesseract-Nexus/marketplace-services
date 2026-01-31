@@ -271,9 +271,9 @@ func (h *ReceiptHandler) GetCustomerOrderReceipt(c *gin.Context) {
 		return
 	}
 
-	// Get customer ID from context (set by CustomerAuthMiddleware)
-	customerID, exists := c.Get("customer_id")
-	if !exists {
+	// Get customer email from context (set by CustomerAuthMiddleware)
+	customerEmail := c.GetString("customer_email")
+	if customerEmail == "" {
 		c.JSON(http.StatusUnauthorized, ReceiptErrorResponse{
 			Error:   "UNAUTHORIZED",
 			Message: "Customer authentication required",
@@ -302,9 +302,8 @@ func (h *ReceiptHandler) GetCustomerOrderReceipt(c *gin.Context) {
 		return
 	}
 
-	// Verify customer owns this order
-	customerIDStr, ok := customerID.(string)
-	if !ok || order.CustomerID.String() != customerIDStr {
+	// Verify customer owns this order (match by email — avoids Keycloak sub vs customers-service UUID mismatch)
+	if order.Customer == nil || !strings.EqualFold(order.Customer.Email, customerEmail) {
 		c.JSON(http.StatusForbidden, ReceiptErrorResponse{
 			Error:   "FORBIDDEN",
 			Message: "You can only access receipts for your own orders",

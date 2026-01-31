@@ -362,7 +362,7 @@ func main() {
 	// Customers can only access their own data (enforced by RequireSameCustomer middleware)
 	storefront := v1.Group("/storefront")
 	publicCustomers := storefront.Group("/customers")
-	publicCustomers.Use(middleware.CustomerAuthMiddleware())
+	publicCustomers.Use(middleware.CustomerAuthMiddleware(db))
 	publicCustomers.Use(middleware.RequireSameCustomer())
 	{
 		// Cart (for storefront use - customers managing their own cart)

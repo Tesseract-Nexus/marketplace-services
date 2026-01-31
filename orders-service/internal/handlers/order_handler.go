@@ -1031,15 +1031,6 @@ type HealthResponse struct {
 // These endpoints allow customers to view their own orders
 // =============================================================================
 
-// getCustomerID extracts customer ID from context (set by CustomerAuthMiddleware)
-func getCustomerID(c *gin.Context) (string, bool) {
-	customerID, exists := c.Get("customer_id")
-	if !exists {
-		return "", false
-	}
-	return customerID.(string), true
-}
-
 // ListCustomerOrders lists orders for the authenticated customer
 // @Summary List customer's orders
 // @Description Get a paginated list of orders for the authenticated customer
@@ -1062,8 +1053,10 @@ func (h *OrderHandler) ListCustomerOrders(c *gin.Context) {
 		return
 	}
 
-	customerIDStr, ok := getCustomerID(c)
-	if !ok {
+	// Use customer email for order lookup — email is stable across identity systems
+	// (avoids Keycloak sub vs customers-service UUID mismatch)
+	customerEmail := c.GetString("customer_email")
+	if customerEmail == "" {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{
 			Error:   "Unauthorized",
 			Message: "Customer authentication required",
@@ -1071,19 +1064,10 @@ func (h *OrderHandler) ListCustomerOrders(c *gin.Context) {
 		return
 	}
 
-	customerID, err := uuid.Parse(customerIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error:   "Invalid customer ID",
-			Message: "Customer ID must be a valid UUID",
-		})
-		return
-	}
-
 	filters := services.OrderListFilters{
-		CustomerID: &customerID,
-		Page:       1,
-		Limit:      20,
+		CustomerEmail: &customerEmail,
+		Page:          1,
+		Limit:         20,
 	}
 
 	// Parse query parameters
@@ -1137,8 +1121,9 @@ func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
 		return
 	}
 
-	customerIDStr, ok := getCustomerID(c)
-	if !ok {
+	// Use customer email for ownership verification — email is stable across identity systems
+	customerEmail := c.GetString("customer_email")
+	if customerEmail == "" {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{
 			Error:   "Unauthorized",
 			Message: "Customer authentication required",
@@ -1165,8 +1150,8 @@ func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
 		return
 	}
 
-	// SECURITY: Ensure customer can only access their own orders
-	if order.CustomerID.String() != customerIDStr {
+	// SECURITY: Ensure customer can only access their own orders (match by email on order_customers)
+	if order.Customer == nil || !strings.EqualFold(order.Customer.Email, customerEmail) {
 		c.JSON(http.StatusForbidden, ErrorResponse{
 			Error:   "Access denied",
 			Message: "You can only view your own orders",
@@ -1175,6 +1160,76 @@ func (h *OrderHandler) GetCustomerOrder(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, order)
+}
+
+// GetCustomerOrderTracking retrieves tracking info for the authenticated customer's order
+// @Summary Get customer's order tracking
+// @Description Get tracking information if the order belongs to the authenticated customer
+// @Tags storefront
+// @Produce json
+// @Param id path string true "Order ID"
+// @Success 200 {object} services.OrderTrackingResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /storefront/my/orders/{id}/tracking [get]
+func (h *OrderHandler) GetCustomerOrderTracking(c *gin.Context) {
+	tenantID, ok := getTenantID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Missing tenant ID",
+			Message: "X-Tenant-ID header is required",
+		})
+		return
+	}
+
+	customerEmail := c.GetString("customer_email")
+	if customerEmail == "" {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "Customer authentication required",
+		})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid order ID",
+			Message: "Order ID must be a valid UUID",
+		})
+		return
+	}
+
+	// Verify customer owns this order before returning tracking
+	order, err := h.orderService.GetOrder(id, tenantID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error:   "Order not found",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	if order.Customer == nil || !strings.EqualFold(order.Customer.Email, customerEmail) {
+		c.JSON(http.StatusForbidden, ErrorResponse{
+			Error:   "Access denied",
+			Message: "You can only view tracking for your own orders",
+		})
+		return
+	}
+
+	tracking, err := h.orderService.GetOrderTracking(id, tenantID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error:   "Order tracking not found",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, tracking)
 }
 
 // StorefrontCancelOrderRequest is the request body for storefront order cancellation.
