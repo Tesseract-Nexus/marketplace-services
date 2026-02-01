@@ -153,6 +153,14 @@ func main() {
 	router.GET("/health", handlers.HealthCheck)
 	router.GET("/ready", handlers.HealthCheck)
 
+	// Public API routes (no auth required - for storefront)
+	publicAPI := router.Group("/api/v1")
+	publicAPI.Use(middleware.TenantMiddleware()) // Only extract tenant, no auth required
+	{
+		// Coupon validation for storefront (guests can validate coupons)
+		publicAPI.POST("/coupons/validate", couponHandler.ValidateCoupon)
+	}
+
 	// Protected API routes
 	api := router.Group("/api/v1")
 
@@ -176,7 +184,7 @@ func main() {
 			coupons.GET("/analytics", rbacMiddleware.RequirePermission(rbac.PermissionCouponsRead), couponHandler.GetCouponAnalytics)
 			coupons.GET("/usage/:id", rbacMiddleware.RequirePermission(rbac.PermissionCouponsRead), couponHandler.GetCouponUsage)
 			coupons.POST("/export", rbacMiddleware.RequirePermission(rbac.PermissionCouponsRead), couponHandler.ExportCoupons)
-			coupons.POST("/validate", rbacMiddleware.RequirePermission(rbac.PermissionCouponsRead), couponHandler.ValidateCoupon)
+			// Note: /validate moved to public routes for storefront access
 
 			// Create operations
 			coupons.POST("", rbacMiddleware.RequirePermission(rbac.PermissionCouponsCreate), couponHandler.CreateCoupon)
