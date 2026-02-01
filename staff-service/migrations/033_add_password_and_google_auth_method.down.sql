@@ -1,0 +1,4 @@
+-- PostgreSQL does not support removing enum values directly.
+-- To rollback, staff with password_and_google would need to be updated to 'password' first,
+-- then the enum type would need to be recreated without the value.
+-- For safety, this is a no-op down migration.
