@@ -82,6 +82,9 @@ type AuthRepository interface {
 	ResendInvitation(invitationID uuid.UUID) error
 	CleanupExpiredInvitations() (int64, error)
 
+	// Auth method management
+	UpdateAuthMethod(tenantID string, email string, authMethod models.StaffAuthMethod) error
+
 	// Activation management
 	GenerateActivationToken(tenantID string, staffID uuid.UUID) (string, error)
 	VerifyActivationToken(token string) (*models.Staff, error)
@@ -760,6 +763,16 @@ func (r *authRepository) VerifyActivationToken(token string) (*models.Staff, err
 	}
 
 	return &staff, nil
+}
+
+func (r *authRepository) UpdateAuthMethod(tenantID string, email string, authMethod models.StaffAuthMethod) error {
+	result := r.db.Model(&models.Staff{}).
+		Where("tenant_id = ? AND email = ? AND auth_method = ?", tenantID, email, models.AuthMethodPassword).
+		Update("auth_method", authMethod)
+	if result.Error != nil {
+		return result.Error
+	}
+	return nil
 }
 
 func (r *authRepository) ActivateAccount(tenantID string, staffID uuid.UUID, authMethod models.StaffAuthMethod, keycloakUserID *string) error {

@@ -2171,6 +2171,60 @@ func (h *AuthHandler) ValidateStaffCredentials(c *gin.Context) {
 	})
 }
 
+// UpdateAuthMethod updates the auth method for a staff member.
+// PATCH /api/v1/auth/update-auth-method
+// This is a service-to-service endpoint called by auth-bff when a Google SSO login is detected
+// for an existing staff member who originally activated with password.
+func (h *AuthHandler) UpdateAuthMethod(c *gin.Context) {
+	var req struct {
+		Email      string `json:"email" binding:"required,email"`
+		TenantID   string `json:"tenant_id" binding:"required"`
+		AuthMethod string `json:"auth_method" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error:   models.Error{Code: "INVALID_REQUEST", Message: err.Error()},
+		})
+		return
+	}
+
+	// Only allow upgrading to password_and_google
+	if req.AuthMethod != string(models.AuthMethodPasswordAndGoogle) {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error:   models.Error{Code: "INVALID_AUTH_METHOD", Message: "Only password_and_google is supported"},
+		})
+		return
+	}
+
+	// Look up staff by email in tenant
+	staff, err := h.staffRepo.GetByEmail(req.TenantID, req.Email)
+	if err != nil || staff == nil {
+		// No-op if staff not found — don't leak info
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "no-op"})
+		return
+	}
+
+	// Only upgrade from password
+	if staff.AuthMethod == nil || *staff.AuthMethod != models.AuthMethodPassword {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "no-op"})
+		return
+	}
+
+	if err := h.authRepo.UpdateAuthMethod(req.TenantID, req.Email, models.AuthMethodPasswordAndGoogle); err != nil {
+		log.Printf("[UpdateAuthMethod] Error updating auth method for %s: %v", req.Email, err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Success: false,
+			Error:   models.Error{Code: "UPDATE_FAILED", Message: "Failed to update auth method"},
+		})
+		return
+	}
+
+	log.Printf("[UpdateAuthMethod] Upgraded auth_method to password_and_google for %s in tenant %s", req.Email, req.TenantID)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "auth_method updated"})
+}
+
 // validateStaffAdminAccess validates that a staff member is authorized to access the admin portal.
 // Access is granted only if:
 // 1. Account status is active

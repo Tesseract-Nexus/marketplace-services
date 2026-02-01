@@ -285,6 +285,8 @@ func main() {
 		// RBAC effective-permissions - called by go-shared/rbac client from other services
 		// This is an internal endpoint for service-to-service permission verification
 		internalRoutes.GET("/rbac/staff/:id/effective-permissions", rbacHandler.GetStaffEffectivePermissions)
+		// Update auth method - called by auth-bff when Google SSO login detected for password-based staff
+		internalRoutes.PATCH("/auth/update-auth-method", authHandler.UpdateAuthMethod)
 	}
 
 	// Protected API routes

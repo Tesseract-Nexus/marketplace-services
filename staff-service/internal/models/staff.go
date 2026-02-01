@@ -140,6 +140,7 @@ const (
 	AuthMethodPassword          StaffAuthMethod = "password"
 	AuthMethodGoogleSSO         StaffAuthMethod = "google_sso"
 	AuthMethodMicrosoftSSO      StaffAuthMethod = "microsoft_sso"
+	AuthMethodPasswordAndGoogle StaffAuthMethod = "password_and_google"
 	AuthMethodInvitationPending StaffAuthMethod = "invitation_pending"
 	AuthMethodSSOPending        StaffAuthMethod = "sso_pending"
 )
