@@ -16,7 +16,6 @@ import (
 	"approval-service/internal/config"
 	"approval-service/internal/handlers"
 	"approval-service/internal/jobs"
-	"approval-service/internal/middleware"
 	"approval-service/internal/models"
 	"approval-service/internal/repository"
 	"approval-service/internal/services"
