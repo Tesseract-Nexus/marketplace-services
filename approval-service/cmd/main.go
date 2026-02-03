@@ -14,6 +14,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"approval-service/internal/config"
+	localevents "approval-service/internal/events"
 	"approval-service/internal/handlers"
 	"approval-service/internal/jobs"
 	"approval-service/internal/models"
@@ -112,8 +113,15 @@ func main() {
 	// Initialize services
 	approvalService := services.NewApprovalService(approvalRepo, publisher, rbacClient)
 
+	// Initialize local events publisher wrapper (for NATS event publishing from handlers)
+	var eventsPublisher *localevents.Publisher
+	if publisher != nil {
+		eventsPublisher = localevents.NewPublisher(publisher, logger)
+		logger.Info("Local events publisher wrapper initialized")
+	}
+
 	// Initialize handlers
-	approvalHandler := handlers.NewApprovalHandler(approvalService)
+	approvalHandler := handlers.NewApprovalHandler(approvalService, eventsPublisher)
 	delegationHandler := handlers.NewDelegationHandler(approvalRepo, rbacMiddleware)
 
 	// Start escalation job
