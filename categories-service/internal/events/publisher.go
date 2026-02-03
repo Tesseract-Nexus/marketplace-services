@@ -79,6 +79,7 @@ func (p *Publisher) PublishCategoryCreated(ctx context.Context, tenantID, catego
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryCreated,
 			TenantID:  tenantID,
+			SourceID:  categoryID, // Set sourceID to category UUID for deduplication
 			Timestamp: time.Now().UTC(),
 		},
 		CategoryID:   categoryID,
@@ -103,6 +104,7 @@ func (p *Publisher) PublishCategoryUpdated(ctx context.Context, tenantID, catego
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryUpdated,
 			TenantID:  tenantID,
+			SourceID:  categoryID, // Set sourceID to category UUID for deduplication
 			Timestamp: time.Now().UTC(),
 		},
 		CategoryID:   categoryID,
@@ -126,6 +128,7 @@ func (p *Publisher) PublishCategoryDeleted(ctx context.Context, tenantID, catego
 		BaseEvent: events.BaseEvent{
 			EventType: CategoryDeleted,
 			TenantID:  tenantID,
+			SourceID:  categoryID, // Set sourceID to category UUID for deduplication
 			Timestamp: time.Now().UTC(),
 		},
 		CategoryID:   categoryID,
