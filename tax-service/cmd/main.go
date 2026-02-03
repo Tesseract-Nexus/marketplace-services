@@ -128,19 +128,10 @@ func setupRouter(taxHandler *handlers.TaxHandler, db *gorm.DB, rbacMiddleware *r
 		log.Println("✓ In-memory rate limiting enabled (Redis unavailable)")
 	}
 
-	// CORS middleware
-	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	// Add CORS middleware - uses go-shared's secure CORS
+	// In production: specific origins with credentials
+	// In development: wildcard without credentials (per CORS spec)
+	router.Use(gosharedmw.EnvironmentAwareCORS())
 
 	// Health checks
 	router.GET("/health", func(c *gin.Context) {

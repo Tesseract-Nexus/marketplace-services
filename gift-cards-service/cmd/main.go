@@ -133,8 +133,10 @@ func main() {
 		logger.Info("✓ In-memory rate limiting enabled (Redis unavailable)")
 	}
 
-	// Add CORS middleware
-	router.Use(middleware.CORS())
+	// Add CORS middleware - uses go-shared's secure CORS
+	// In production: specific origins with credentials
+	// In development: wildcard without credentials (per CORS spec)
+	router.Use(gosharedmw.EnvironmentAwareCORS())
 
 	// Health check endpoints (no auth required)
 	router.GET("/health", handlers.HealthCheck)

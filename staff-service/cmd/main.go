@@ -195,7 +195,10 @@ func main() {
 
 	// Setup middleware
 	router.Use(middleware.RequestIDMiddleware())
-	router.Use(middleware.CORS())
+	// Add CORS middleware - uses go-shared's secure CORS
+	// In production: specific origins with credentials
+	// In development: wildcard without credentials (per CORS spec)
+	router.Use(sharedMiddleware.EnvironmentAwareCORS())
 	router.Use(middleware.ErrorHandler())
 
 	// Health check endpoints (no auth required)

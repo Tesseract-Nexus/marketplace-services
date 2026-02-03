@@ -296,7 +296,10 @@ func setupRouter(shippingHandler *handlers.ShippingHandler, carrierConfigHandler
 	}
 
 	router.Use(middleware.LoggingMiddleware())
-	router.Use(middleware.CORS())
+	// Add CORS middleware - uses go-shared's secure CORS
+	// In production: specific origins with credentials
+	// In development: wildcard without credentials (per CORS spec)
+	router.Use(gosharedmw.EnvironmentAwareCORS())
 
 	// IstioAuth middleware - extracts JWT claims from x-jwt-claim-* headers
 	// This MUST come before TenantMiddleware and RBAC middleware
