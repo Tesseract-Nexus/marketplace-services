@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/Tesseract-Nexus/go-shared/security"
 	"customers-service/internal/clients"
+	"customers-service/internal/events"
 	"customers-service/internal/models"
 	"customers-service/internal/services"
 )
@@ -19,13 +20,15 @@ import (
 type CustomerHandler struct {
 	service            *services.CustomerService
 	notificationClient *clients.NotificationClient
+	eventsPublisher    *events.Publisher
 }
 
 // NewCustomerHandler creates a new customer handler
-func NewCustomerHandler(service *services.CustomerService) *CustomerHandler {
+func NewCustomerHandler(service *services.CustomerService, eventsPublisher *events.Publisher) *CustomerHandler {
 	return &CustomerHandler{
 		service:            service,
 		notificationClient: clients.NewNotificationClient(),
+		eventsPublisher:    eventsPublisher,
 	}
 }
 
@@ -54,6 +57,11 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
+	}
+
+	// Publish customer created event
+	if h.eventsPublisher != nil {
+		_ = h.eventsPublisher.PublishCustomerCreated(c.Request.Context(), customer, tenantID)
 	}
 
 	c.JSON(http.StatusCreated, customer)
@@ -226,6 +234,11 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 		return
 	}
 
+	// Publish customer updated event
+	if h.eventsPublisher != nil {
+		_ = h.eventsPublisher.PublishCustomerUpdated(c.Request.Context(), customer, tenantID)
+	}
+
 	c.JSON(http.StatusOK, customer)
 }
 
@@ -289,9 +302,20 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 		return
 	}
 
+	// Get customer before deletion for event publishing
+	var customerForEvent *models.Customer
+	if h.eventsPublisher != nil {
+		customerForEvent, _ = h.service.GetCustomer(c.Request.Context(), tenantID, customerID)
+	}
+
 	if err := h.service.DeleteCustomer(c.Request.Context(), tenantID, customerID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
+	}
+
+	// Publish customer deleted event
+	if h.eventsPublisher != nil && customerForEvent != nil {
+		_ = h.eventsPublisher.PublishCustomerDeleted(c.Request.Context(), customerForEvent, tenantID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "customer deleted successfully"})

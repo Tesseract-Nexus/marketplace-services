@@ -100,9 +100,17 @@ func main() {
 	// Initialize cart validation service
 	cartValidationService := services.NewCartValidationService(db)
 
+	// Initialize NATS events publisher
+	eventsPublisher, err := events.NewPublisher(nil) // Uses default logrus logger
+	if err != nil {
+		log.Printf("WARNING: Failed to initialize events publisher: %v (NATS events disabled)", err)
+	} else {
+		log.Println("✓ Events publisher initialized (NATS connected)")
+	}
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
-	customerHandler := handlers.NewCustomerHandler(customerService)
+	customerHandler := handlers.NewCustomerHandler(customerService, eventsPublisher)
 	segmentHandler := handlers.NewSegmentHandler(segmentService)
 	paymentMethodHandler := handlers.NewPaymentMethodHandler(customerService)
 	wishlistHandler := handlers.NewWishlistHandler(db)
