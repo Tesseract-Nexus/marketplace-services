@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/Tesseract-Nexus/go-shared/security"
 	"customers-service/internal/clients"
 	"customers-service/internal/models"
 	"customers-service/internal/services"
@@ -940,14 +941,14 @@ func (h *CustomerHandler) SendVerificationEmail(c *gin.Context) {
 	notification := &clients.EmailVerificationNotification{
 		TenantID:         tenantID,
 		CustomerID:       customerID.String(),
-		CustomerEmail:    customer.Email,
+		CustomerEmail:    customer.Email, // Real email needed for actual delivery
 		CustomerName:     customerName,
 		VerificationLink: verificationLink,
 		StorefrontURL:    storefrontHost,
 	}
 
 	if err := h.notificationClient.SendEmailVerificationNotification(c.Request.Context(), notification); err != nil {
-		log.Printf("Failed to send verification email to %s: %v", customer.Email, err)
+		log.Printf("Failed to send verification email to %s: %v", security.MaskEmail(customer.Email), err)
 		// Don't fail the request - token was generated successfully
 		// Just log the error and return success with a note
 		c.JSON(http.StatusOK, gin.H{
@@ -957,7 +958,7 @@ func (h *CustomerHandler) SendVerificationEmail(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Verification email sent to %s for customer %s", customer.Email, customerID)
+	log.Printf("Verification email sent to %s for customer %s", security.MaskEmail(customer.Email), customerID)
 
 	// Return success - in production, don't include the token
 	response := gin.H{

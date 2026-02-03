@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/Tesseract-Nexus/go-shared/auth"
+	"github.com/Tesseract-Nexus/go-shared/security"
 	"staff-service/internal/clients"
 	"staff-service/internal/models"
 	"staff-service/internal/repository"
@@ -845,7 +846,7 @@ func (h *AuthHandler) CreateInvitation(c *gin.Context) {
 					ActivationLink: activationLink,
 				}
 				if err := h.notificationClient.SendStaffInvitation(context.Background(), notification); err != nil {
-					log.Printf("[AUTH] Failed to send invitation email to %s: %v", staff.Email, err)
+					log.Printf("[AUTH] Failed to send invitation email to %s: %v", security.MaskEmail(staff.Email), err)
 				}
 			}()
 		}
@@ -1073,7 +1074,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		}
 		// Set password in Keycloak - Keycloak is required for password auth
 		if h.keycloakClient == nil {
-			log.Printf("[ActivateAccount] ERROR: Keycloak not configured - cannot set password for %s", staff.Email)
+			log.Printf("[ActivateAccount] ERROR: Keycloak not configured - cannot set password for %s", security.MaskEmail(staff.Email))
 			c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 				Success: false,
 				Error: models.Error{
@@ -1097,7 +1098,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			if existingUser != nil && existingUser.ID != "" {
 				// User already exists in Keycloak, use their ID
 				keycloakUserID = existingUser.ID
-				log.Printf("[ActivateAccount] Found existing Keycloak user for %s: %s", staff.Email, keycloakUserID)
+				log.Printf("[ActivateAccount] Found existing Keycloak user for %s: %s", security.MaskEmail(staff.Email), keycloakUserID)
 			} else {
 				// Create Keycloak user
 				userRep := auth.UserRepresentation{
@@ -1110,7 +1111,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 				}
 				newUserID, err := h.keycloakClient.CreateUser(c.Request.Context(), userRep)
 				if err != nil {
-					log.Printf("[ActivateAccount] Failed to create Keycloak user for %s: %v", staff.Email, err)
+					log.Printf("[ActivateAccount] Failed to create Keycloak user for %s: %v", security.MaskEmail(staff.Email), err)
 					c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 						Success: false,
 						Error: models.Error{
@@ -1121,7 +1122,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 					return
 				}
 				keycloakUserID = newUserID
-				log.Printf("[ActivateAccount] Created Keycloak user for %s: %s", staff.Email, keycloakUserID)
+				log.Printf("[ActivateAccount] Created Keycloak user for %s: %s", security.MaskEmail(staff.Email), keycloakUserID)
 			}
 			// keycloak_user_id will be stored atomically in ActivateAccount below
 		}
@@ -1136,15 +1137,15 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			keycloakAttrs["vendor_id"] = []string{*staff.VendorID}
 		}
 		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), keycloakUserID, keycloakAttrs); err != nil {
-			log.Printf("[ActivateAccount] Warning: Failed to set Keycloak user attributes for %s: %v", staff.Email, err)
+			log.Printf("[ActivateAccount] Warning: Failed to set Keycloak user attributes for %s: %v", security.MaskEmail(staff.Email), err)
 			// Don't fail activation - attributes can be synced later via backfill
 		} else {
-			log.Printf("[ActivateAccount] Keycloak user attributes set for %s (staff_id=%s, tenant_id=%s)", staff.Email, staff.ID, tenantID)
+			log.Printf("[ActivateAccount] Keycloak user attributes set for %s (staff_id=%s, tenant_id=%s)", security.MaskEmail(staff.Email), staff.ID, tenantID)
 		}
 
 		// Set password in Keycloak
 		if err := h.keycloakClient.SetUserPassword(c.Request.Context(), keycloakUserID, *req.Password, false); err != nil {
-			log.Printf("[ActivateAccount] Failed to set Keycloak password for %s: %v", staff.Email, err)
+			log.Printf("[ActivateAccount] Failed to set Keycloak password for %s: %v", security.MaskEmail(staff.Email), err)
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 				Success: false,
 				Error: models.Error{
@@ -1154,7 +1155,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 			})
 			return
 		}
-		log.Printf("[ActivateAccount] Password set in Keycloak for user %s", staff.Email)
+		log.Printf("[ActivateAccount] Password set in Keycloak for user %s", security.MaskEmail(staff.Email))
 
 	case models.AuthMethodGoogleSSO:
 		if req.GoogleIDToken == nil {
@@ -1196,7 +1197,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		if h.keycloakClient != nil {
 			kcUserID, err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff)
 			if err != nil {
-				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Google SSO %s: %v", staff.Email, err)
+				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Google SSO %s: %v", security.MaskEmail(staff.Email), err)
 			} else if kcUserID != "" {
 				keycloakUserID = kcUserID
 			}
@@ -1242,7 +1243,7 @@ func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 		if h.keycloakClient != nil {
 			kcUserID, err := h.ensureKeycloakUserWithAttributes(c.Request.Context(), tenantID, staff)
 			if err != nil {
-				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Microsoft SSO %s: %v", staff.Email, err)
+				log.Printf("[ActivateAccount] Warning: Failed to sync Keycloak user for Microsoft SSO %s: %v", security.MaskEmail(staff.Email), err)
 			} else if kcUserID != "" {
 				keycloakUserID = kcUserID
 			}
@@ -1393,16 +1394,16 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 			notification := &clients.StaffInvitationNotification{
 				TenantID:       tenantID,
 				StaffID:        invitation.StaffID.String(),
-				StaffEmail:     invitation.Staff.Email,
+				StaffEmail:     security.MaskEmail(invitation.Staff.Email),
 				StaffName:      fmt.Sprintf("%s %s", invitation.Staff.FirstName, invitation.Staff.LastName),
 				Role:           string(invitation.Staff.Role),
 				InviterName:    "Your administrator",
 				ActivationLink: activationLink,
 			}
 			if err := h.notificationClient.SendStaffInvitation(context.Background(), notification); err != nil {
-				log.Printf("[AUTH] Failed to send resent invitation email to %s: %v", invitation.Staff.Email, err)
+				log.Printf("[AUTH] Failed to send resent invitation email to %s: %v", security.MaskEmail(invitation.Staff.Email), err)
 			} else {
-				log.Printf("[AUTH] Resent invitation email to %s", invitation.Staff.Email)
+				log.Printf("[AUTH] Resent invitation email to %s", security.MaskEmail(invitation.Staff.Email))
 			}
 		}()
 	}
@@ -2031,7 +2032,7 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 	// Get all staff records for this email across all tenants
 	staffList, err := h.staffRepo.GetAllByEmail(req.Email)
 	if err != nil {
-		log.Printf("[AUTH] Error getting staff tenants for email %s: %v", req.Email, err)
+		log.Printf("[AUTH] Error getting staff tenants for email %s: %v", security.MaskEmail(req.Email), err)
 		// Don't reveal error details - just return empty list
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -2052,7 +2053,7 @@ func (h *AuthHandler) GetStaffTenants(c *gin.Context) {
 		// SECURITY: Filter out staff who are not authorized for admin portal access
 		// This prevents customers from seeing tenants in the admin portal tenant switcher
 		if err := validateStaffAdminAccess(&staff); err != nil {
-			log.Printf("[AUTH] Filtering out staff %s from tenant list: %v", staff.Email, err)
+			log.Printf("[AUTH] Filtering out staff %s from tenant list: %v", security.MaskEmail(staff.Email), err)
 			continue
 		}
 
@@ -2137,10 +2138,10 @@ func (h *AuthHandler) BackfillKeycloakAttributes(c *gin.Context) {
 		if err := h.keycloakClient.UpdateUserAttributes(c.Request.Context(), *staff.KeycloakUserID, keycloakAttrs); err != nil {
 			failed++
 			errors = append(errors, fmt.Sprintf("%s: %v", staff.Email, err))
-			log.Printf("[BackfillKeycloakAttributes] Failed to sync %s: %v", staff.Email, err)
+			log.Printf("[BackfillKeycloakAttributes] Failed to sync %s: %v", security.MaskEmail(staff.Email), err)
 		} else {
 			synced++
-			log.Printf("[BackfillKeycloakAttributes] Synced %s (staff_id=%s)", staff.Email, staff.ID)
+			log.Printf("[BackfillKeycloakAttributes] Synced %s (staff_id=%s)", security.MaskEmail(staff.Email), staff.ID)
 		}
 	}
 
@@ -2213,7 +2214,7 @@ func (h *AuthHandler) UpdateAuthMethod(c *gin.Context) {
 	}
 
 	if err := h.authRepo.UpdateAuthMethod(req.TenantID, req.Email, models.AuthMethodPasswordAndGoogle); err != nil {
-		log.Printf("[UpdateAuthMethod] Error updating auth method for %s: %v", req.Email, err)
+		log.Printf("[UpdateAuthMethod] Error updating auth method for %s: %v", security.MaskEmail(req.Email), err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
 			Error:   models.Error{Code: "UPDATE_FAILED", Message: "Failed to update auth method"},
@@ -2221,7 +2222,7 @@ func (h *AuthHandler) UpdateAuthMethod(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[UpdateAuthMethod] Upgraded auth_method to password_and_google for %s in tenant %s", req.Email, req.TenantID)
+	log.Printf("[UpdateAuthMethod] Upgraded auth_method to password_and_google for %s in tenant %s", security.MaskEmail(req.Email), req.TenantID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "auth_method updated"})
 }
 
@@ -2325,7 +2326,7 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 		existingUser, err := h.keycloakClient.GetUserByEmail(ctx, staff.Email)
 		if err == nil && existingUser != nil && existingUser.ID != "" {
 			keycloakUserID = existingUser.ID
-			log.Printf("[ensureKeycloakUserWithAttributes] Found existing Keycloak user for %s: %s", staff.Email, keycloakUserID)
+			log.Printf("[ensureKeycloakUserWithAttributes] Found existing Keycloak user for %s: %s", security.MaskEmail(staff.Email), keycloakUserID)
 		} else {
 			// Create new Keycloak user
 			userRep := auth.UserRepresentation{
@@ -2341,7 +2342,7 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 				return "", fmt.Errorf("failed to create Keycloak user: %w", err)
 			}
 			keycloakUserID = newUserID
-			log.Printf("[ensureKeycloakUserWithAttributes] Created Keycloak user for %s: %s", staff.Email, keycloakUserID)
+			log.Printf("[ensureKeycloakUserWithAttributes] Created Keycloak user for %s: %s", security.MaskEmail(staff.Email), keycloakUserID)
 		}
 		// Note: keycloak_user_id will be stored atomically in ActivateAccount
 	}
@@ -2360,6 +2361,6 @@ func (h *AuthHandler) ensureKeycloakUserWithAttributes(ctx context.Context, tena
 		return "", fmt.Errorf("failed to update Keycloak user attributes: %w", err)
 	}
 
-	log.Printf("[ensureKeycloakUserWithAttributes] Keycloak attributes set for %s (staff_id=%s, tenant_id=%s)", staff.Email, staff.ID, tenantID)
+	log.Printf("[ensureKeycloakUserWithAttributes] Keycloak attributes set for %s (staff_id=%s, tenant_id=%s)", security.MaskEmail(staff.Email), staff.ID, tenantID)
 	return keycloakUserID, nil
 }
