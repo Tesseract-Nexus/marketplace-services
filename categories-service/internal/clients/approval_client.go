@@ -40,12 +40,15 @@ func NewApprovalClient() *ApprovalClient {
 
 // CreateApprovalRequest is the request body for creating approvals
 type CreateApprovalRequest struct {
-	WorkflowName string         `json:"workflowName"`
-	ActionType   string         `json:"actionType"`
-	ResourceType string         `json:"resourceType,omitempty"`
-	ResourceID   string         `json:"resourceId,omitempty"`
-	Reason       string         `json:"reason,omitempty"`
-	ActionData   map[string]any `json:"actionData,omitempty"`
+	WorkflowName     string         `json:"workflowName"`
+	ActionType       string         `json:"actionType"`
+	ResourceType     string         `json:"resourceType,omitempty"`
+	ResourceID       string         `json:"resourceId,omitempty"`
+	ResourceRef      string         `json:"resource_reference,omitempty"`
+	RequestedByID    string         `json:"requested_by_id,omitempty"`
+	RequestedByName  string         `json:"requested_by_name,omitempty"`
+	Reason           string         `json:"reason,omitempty"`
+	ActionData       map[string]any `json:"actionData,omitempty"`
 }
 
 // ApprovalRequestResponse is the response from creating approvals
@@ -93,13 +96,16 @@ func (c *ApprovalClient) CreateApprovalRequestCall(req *CreateApprovalRequest, t
 }
 
 // CreateCategoryApprovalRequest creates an approval request for category creation/publication
-func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, categoryID, categoryName string) (*ApprovalRequestResponse, error) {
+func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, userName, categoryID, categoryName string) (*ApprovalRequestResponse, error) {
 	req := &CreateApprovalRequest{
-		WorkflowName: "category_creation",
-		ActionType:   string(ApprovalTypeCategoryCreate),
-		ResourceType: "category",
-		ResourceID:   categoryID,
-		Reason:       fmt.Sprintf("Request to publish category: %s", categoryName),
+		WorkflowName:    "category_creation",
+		ActionType:      string(ApprovalTypeCategoryCreate),
+		ResourceType:    "category",
+		ResourceID:      categoryID,
+		ResourceRef:     categoryName, // Set entity reference to category name
+		RequestedByID:   userID,
+		RequestedByName: userName,
+		Reason:          fmt.Sprintf("Request to publish category: %s", categoryName),
 		ActionData: map[string]any{
 			"category_id":   categoryID,
 			"category_name": categoryName,

@@ -41,6 +41,7 @@ func (h *ApprovalCallbackHandler) SubmitCategoryForApproval(c *gin.Context) {
 	}
 
 	userID := c.GetString("user_id")
+	userName := c.GetString("username")
 	categoryIDStr := c.Param("id")
 
 	// Get the category
@@ -72,6 +73,7 @@ func (h *ApprovalCallbackHandler) SubmitCategoryForApproval(c *gin.Context) {
 	approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
 		tenantID,
 		userID,
+		userName,
 		category.ID.String(),
 		category.Name,
 	)

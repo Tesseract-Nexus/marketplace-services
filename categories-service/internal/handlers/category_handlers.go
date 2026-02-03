@@ -140,6 +140,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
 			tenantID,
 			userID,
+			userName,
 			req.ID.String(),
 			req.Name,
 		)
