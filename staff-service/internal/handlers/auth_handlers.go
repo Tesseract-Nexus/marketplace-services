@@ -966,6 +966,31 @@ func (h *AuthHandler) VerifyInvitation(c *gin.Context) {
 	})
 }
 
+// VerifyInvitationRequest is the request body for POST /invitation/verify
+type VerifyInvitationRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+// VerifyInvitationPOST verifies an invitation token via POST (preferred - token in body, not URL)
+// SECURITY: This is the preferred method as tokens aren't exposed in URLs/logs/history
+func (h *AuthHandler) VerifyInvitationPOST(c *gin.Context) {
+	var req VerifyInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Success: false,
+			Error: models.Error{
+				Code:    "INVALID_REQUEST",
+				Message: "Token is required in request body",
+			},
+		})
+		return
+	}
+
+	// Set token as query param and delegate to existing handler logic
+	c.Request.URL.RawQuery = "token=" + req.Token
+	h.VerifyInvitation(c)
+}
+
 // ActivateAccount activates a staff account
 func (h *AuthHandler) ActivateAccount(c *gin.Context) {
 	var req models.StaffActivationRequest

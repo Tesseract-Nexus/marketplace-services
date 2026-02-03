@@ -254,6 +254,9 @@ func main() {
 	invitationAuth := router.Group("/api/v1/auth")
 	invitationAuth.Use(sharedMiddleware.AuthRateLimit()) // Rate limit to prevent token brute-force
 	{
+		// SECURITY: POST is preferred - token in body, not URL (prevents exposure in logs/history)
+		invitationAuth.POST("/invitation/verify", authHandler.VerifyInvitationPOST)
+		// DEPRECATED: GET kept for backward compatibility but tokens in URLs are a security risk
 		invitationAuth.GET("/invitation/verify", authHandler.VerifyInvitation)
 		invitationAuth.POST("/activate", authHandler.ActivateAccount)
 	}
