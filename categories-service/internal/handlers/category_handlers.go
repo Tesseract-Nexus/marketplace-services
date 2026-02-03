@@ -133,6 +133,10 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		userName := c.GetString("username")
 		userEmail := c.GetString("user_email")
 
+		// Debug: log the role being used for auto-approval check
+		fmt.Printf("CreateCategory: user_id=%s, user_role=%s, can_auto_approve=%v\n",
+			userID, userRole, clients.CanAutoApprove(userRole))
+
 		approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
 			tenantID,
 			userID,

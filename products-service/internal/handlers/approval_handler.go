@@ -576,6 +576,10 @@ func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
 	userRole := c.GetString("user_role")
 	userEmail := c.GetString("user_email")
 
+	// Debug: log the role being used for auto-approval check
+	fmt.Printf("SubmitProductForApproval: user_id=%s, user_role=%s, can_auto_approve=%v\n",
+		userIDStr, userRole, clients.CanAutoApprove(userRole))
+
 	productIDStr := c.Param("id")
 	productID, err := uuid.Parse(productIDStr)
 	if err != nil {

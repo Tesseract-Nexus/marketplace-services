@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -151,6 +152,7 @@ func (c *ApprovalClient) ApproveApprovalRequest(approvalID, tenantID, userID, us
 
 // CanAutoApprove checks if the given role can auto-approve categories
 // Store owners and above can auto-approve their own creations
+// Case-insensitive matching for role names
 func CanAutoApprove(role string) bool {
 	autoApproveRoles := map[string]bool{
 		"owner":       true,
@@ -158,5 +160,6 @@ func CanAutoApprove(role string) bool {
 		"super_admin": true,
 		"admin":       true,
 	}
-	return autoApproveRoles[role]
+	// Convert role to lowercase for case-insensitive matching
+	return autoApproveRoles[strings.ToLower(role)]
 }
