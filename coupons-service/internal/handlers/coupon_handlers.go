@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"coupons-service/internal/clients"
+	"coupons-service/internal/events"
 	"coupons-service/internal/models"
 	"coupons-service/internal/repository"
 )
@@ -18,13 +19,15 @@ type CouponHandler struct {
 	repo               *repository.CouponRepository
 	notificationClient *clients.NotificationClient
 	tenantClient       *clients.TenantClient
+	eventsPublisher    *events.Publisher
 }
 
-func NewCouponHandler(repo *repository.CouponRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient) *CouponHandler {
+func NewCouponHandler(repo *repository.CouponRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient, eventsPublisher *events.Publisher) *CouponHandler {
 	return &CouponHandler{
 		repo:               repo,
 		notificationClient: notificationClient,
 		tenantClient:       tenantClient,
+		eventsPublisher:    eventsPublisher,
 	}
 }
 
@@ -193,7 +196,33 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		return
 	}
 
-	// Send coupon created notification (non-blocking)
+	// Publish coupon.created event for real-time admin notifications via NATS
+	if h.eventsPublisher != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			validUntil := ""
+			if coupon.ValidUntil != nil {
+				validUntil = coupon.ValidUntil.Format(time.RFC3339)
+			}
+
+			if err := h.eventsPublisher.PublishCouponCreated(
+				ctx,
+				tenantID,
+				coupon.ID.String(),
+				coupon.Code,
+				string(coupon.DiscountType),
+				coupon.DiscountValue,
+				coupon.ValidFrom.Format(time.RFC3339),
+				validUntil,
+			); err != nil {
+				log.Printf("[COUPON] Failed to publish coupon created event: %v", err)
+			}
+		}()
+	}
+
+	// Send coupon created notification via HTTP (for email notifications)
 	if h.notificationClient != nil {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -514,8 +543,25 @@ func (h *CouponHandler) UpdateCoupon(c *gin.Context) {
 		return
 	}
 
-	// Note: Coupon updates don't typically trigger email notifications
-	// The NATS event publishing has been removed in favor of direct API calls
+	// Publish coupon.updated event for real-time admin notifications via NATS
+	if h.eventsPublisher != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := h.eventsPublisher.PublishCouponUpdated(
+				ctx,
+				tenantID,
+				coupon.ID.String(),
+				coupon.Code,
+				string(coupon.DiscountType),
+				coupon.DiscountValue,
+				string(coupon.Status),
+			); err != nil {
+				log.Printf("[COUPON] Failed to publish coupon updated event: %v", err)
+			}
+		}()
+	}
 
 	c.JSON(http.StatusOK, models.CouponResponse{
 		Success: true,
@@ -588,8 +634,22 @@ func (h *CouponHandler) DeleteCoupon(c *gin.Context) {
 		return
 	}
 
-	// Note: Coupon deletions don't typically trigger email notifications
-	// The NATS event publishing has been removed in favor of direct API calls
+	// Publish coupon.deleted event for real-time admin notifications via NATS
+	if h.eventsPublisher != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := h.eventsPublisher.PublishCouponDeleted(
+				ctx,
+				tenantID,
+				coupon.ID.String(),
+				coupon.Code,
+			); err != nil {
+				log.Printf("[COUPON] Failed to publish coupon deleted event: %v", err)
+			}
+		}()
+	}
 
 	c.Status(http.StatusNoContent)
 }

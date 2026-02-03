@@ -114,8 +114,8 @@ func main() {
 	// Initialize repository
 	couponRepo := repository.NewCouponRepository(db, redisClient)
 
-	// Initialize handlers
-	couponHandler := handlers.NewCouponHandler(couponRepo, notificationClient, tenantClient)
+	// Initialize handlers with events publisher for NATS notifications
+	couponHandler := handlers.NewCouponHandler(couponRepo, notificationClient, tenantClient, eventsPublisher)
 
 	// Initialize Gin router
 	if cfg.Environment == "production" {
