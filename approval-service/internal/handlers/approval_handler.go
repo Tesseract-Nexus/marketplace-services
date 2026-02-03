@@ -282,6 +282,62 @@ func (h *ApprovalHandler) ApproveRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, request)
 }
 
+// ApproveRequestInternal approves an approval request without RBAC check
+// This is used by other services for auto-approval when the user has high privileges
+// POST /api/v1/approvals/:id/approve/internal
+func (h *ApprovalHandler) ApproveRequestInternal(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request id"})
+		return
+	}
+
+	// Extract actor info for audit logging
+	actor := gosharedmw.GetActorInfo(c)
+
+	userIDStr := c.GetString("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid user_id"})
+		return
+	}
+
+	userRole := c.GetString("user_role")
+
+	var body struct {
+		Comment string `json:"comment"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	request, err := h.service.ApproveRequest(c.Request.Context(), id, userID, userRole, actor.ActorName, actor.ActorEmail, body.Comment)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch err {
+		case services.ErrRequestNotFound:
+			status = http.StatusNotFound
+		case services.ErrUnauthorizedApprover:
+			status = http.StatusForbidden
+		case services.ErrRequestAlreadyDecided:
+			status = http.StatusConflict
+		case services.ErrSelfApprovalNotAllowed:
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	// Return wrapped response for service-to-service compatibility
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"id":     request.ID.String(),
+			"status": request.Status,
+		},
+		"message": "Approval request approved successfully",
+	})
+}
+
 // RejectRequest rejects an approval request
 // @Summary Reject request
 // @Tags Approvals

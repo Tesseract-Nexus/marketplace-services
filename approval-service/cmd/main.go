@@ -19,6 +19,7 @@ import (
 	"approval-service/internal/jobs"
 	"approval-service/internal/models"
 	"approval-service/internal/repository"
+	"approval-service/internal/seeders"
 	"approval-service/internal/services"
 
 	"github.com/Tesseract-Nexus/go-shared/events"
@@ -79,6 +80,14 @@ func main() {
 		logger.Fatalf("Failed to run migrations: %v", err)
 	}
 	logger.Info("Database migrations completed")
+
+	// Seed system workflows (product_creation, category_creation, etc.)
+	logger.Info("Seeding system workflows...")
+	if err := seeders.SeedSystemWorkflows(db); err != nil {
+		logger.Warnf("Failed to seed system workflows: %v (continuing anyway)", err)
+	} else {
+		logger.Info("System workflows seeded successfully")
+	}
 
 	// Initialize repository
 	approvalRepo := repository.NewApprovalRepository(db)
@@ -169,6 +178,10 @@ func main() {
 		// This is used by products-service, categories-service, etc. to create approval requests
 		// on behalf of users when they create/update resources
 		api.POST("/approvals/internal", approvalHandler.CreateRequest)
+
+		// Service-to-service endpoint for auto-approving requests (no RBAC - internal services only)
+		// Used for auto-approval when the requester has sufficient privileges (e.g., store_owner)
+		api.POST("/approvals/:id/approve/internal", approvalHandler.ApproveRequestInternal)
 
 		// User-facing endpoints
 		api.POST("/approvals", rbacMiddleware.RequirePermission(rbac.PermissionApprovalsCreate), approvalHandler.CreateRequest)

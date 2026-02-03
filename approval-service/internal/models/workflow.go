@@ -11,8 +11,8 @@ import (
 // ApprovalWorkflow defines a workflow template for approvals
 type ApprovalWorkflow struct {
 	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	TenantID           string         `gorm:"type:varchar(255);not null;index" json:"tenantId"`
-	Name               string         `gorm:"type:varchar(100);not null" json:"name"`
+	TenantID           string         `gorm:"type:varchar(255);not null;uniqueIndex:uq_workflow_tenant_name" json:"tenantId"`
+	Name               string         `gorm:"type:varchar(100);not null;uniqueIndex:uq_workflow_tenant_name" json:"name"`
 	DisplayName        string         `gorm:"type:varchar(255);not null" json:"displayName"`
 	Description        string         `gorm:"type:text" json:"description,omitempty"`
 	TriggerType        string         `gorm:"type:varchar(50);not null" json:"triggerType"` // threshold, condition, always

@@ -107,3 +107,56 @@ func (c *ApprovalClient) CreateCategoryApprovalRequest(tenantID, userID, categor
 	}
 	return c.CreateApprovalRequestCall(req, tenantID, userID)
 }
+
+// ApproveApprovalRequest approves an existing approval request
+// Used for auto-approval when the requester has sufficient permissions (e.g., store_owner)
+// Uses the internal endpoint which doesn't require RBAC permission
+func (c *ApprovalClient) ApproveApprovalRequest(approvalID, tenantID, userID, userRole, userName, userEmail, comment string) (*ApprovalRequestResponse, error) {
+	reqBody := map[string]string{
+		"comment": comment,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Use internal endpoint to bypass RBAC (for service-to-service calls)
+	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/v1/approvals/"+approvalID+"/approve/internal", bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	// Set Istio JWT claim headers for auth middleware
+	httpReq.Header.Set("x-jwt-claim-sub", userID)
+	httpReq.Header.Set("x-jwt-claim-tenant-id", tenantID)
+	httpReq.Header.Set("x-jwt-claim-email", userEmail)
+	httpReq.Header.Set("x-jwt-claim-name", userName)
+	// Set roles header for the approval service to check authorization
+	httpReq.Header.Set("x-jwt-claim-roles", fmt.Sprintf("[\"%s\"]", userRole))
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call approval service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var approvalResp ApprovalRequestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&approvalResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &approvalResp, nil
+}
+
+// CanAutoApprove checks if the given role can auto-approve categories
+// Store owners and above can auto-approve their own creations
+func CanAutoApprove(role string) bool {
+	autoApproveRoles := map[string]bool{
+		"owner":       true,
+		"store_owner": true,
+		"super_admin": true,
+		"admin":       true,
+	}
+	return autoApproveRoles[role]
+}

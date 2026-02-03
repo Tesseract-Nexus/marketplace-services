@@ -126,8 +126,13 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 
 	// Create approval request for category publication
 	var approvalID *string
+	var autoApproved bool
 	if h.approvalClient != nil {
 		userID := c.GetString("user_id")
+		userRole := c.GetString("user_role")
+		userName := c.GetString("username")
+		userEmail := c.GetString("user_email")
+
 		approvalResp, err := h.approvalClient.CreateCategoryApprovalRequest(
 			tenantID,
 			userID,
@@ -136,6 +141,26 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		)
 		if err == nil && approvalResp != nil && approvalResp.Data != nil {
 			approvalID = &approvalResp.Data.ID
+
+			// Check if user can auto-approve (store_owner, owner, admin, super_admin)
+			if clients.CanAutoApprove(userRole) {
+				autoApproveResp, autoApproveErr := h.approvalClient.ApproveApprovalRequest(
+					*approvalID,
+					tenantID,
+					userID,
+					userRole,
+					userName,
+					userEmail,
+					"Auto-approved by "+userRole,
+				)
+				if autoApproveErr == nil && autoApproveResp != nil && autoApproveResp.Success {
+					autoApproved = true
+					// Update category status to published (if there's a status field)
+					// For now, categories may not have a status field, so just mark as auto-approved
+				} else {
+					fmt.Printf("Warning: Auto-approval failed for category %s: %v\n", req.ID.String(), autoApproveErr)
+				}
+			}
 		}
 		// Log error but don't fail category creation if approval service is unavailable
 		if err != nil {
@@ -145,6 +170,16 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 
 	// Include approval ID in response if available
 	if approvalID != nil {
+		if autoApproved {
+			c.JSON(http.StatusCreated, gin.H{
+				"success":      true,
+				"data":         req,
+				"message":      "Category created and published (auto-approved)",
+				"approvalId":   *approvalID,
+				"autoApproved": true,
+			})
+			return
+		}
 		c.JSON(http.StatusAccepted, gin.H{
 			"success":    true,
 			"data":       req,

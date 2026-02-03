@@ -557,6 +557,8 @@ func (h *ApprovalProductsHandler) executeApprovedPriceChange(c *gin.Context, ten
 
 // SubmitProductForApproval submits an existing draft product for approval
 // POST /api/v1/products/:id/submit-for-approval
+// If the user has a high-privilege role (store_owner, owner, admin, super_admin),
+// the product will be auto-approved and published immediately.
 func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr := tenantID.(string)
@@ -570,6 +572,9 @@ func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
 	if userName != nil {
 		userNameStr = userName.(string)
 	}
+	// Get user role for auto-approval check
+	userRole := c.GetString("user_role")
+	userEmail := c.GetString("user_email")
 
 	productIDStr := c.Param("id")
 	productID, err := uuid.Parse(productIDStr)
@@ -629,13 +634,56 @@ func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
 	}
 
 	if approvalResp.Success && approvalResp.Data != nil {
-		// Fix #1: Update product status to PENDING after approval request is created
+		approvalID := approvalResp.Data.ID
+
+		// Check if user can auto-approve (store_owner, owner, admin, super_admin)
+		if clients.CanAutoApprove(userRole) {
+			// Auto-approve the request
+			autoApproveResp, autoApproveErr := h.approvalClient.ApproveApprovalRequest(
+				approvalID,
+				tenantIDStr,
+				userIDStr,
+				userRole,
+				userNameStr,
+				userEmail,
+				"Auto-approved by "+userRole,
+			)
+
+			if autoApproveErr == nil && autoApproveResp != nil && autoApproveResp.Success {
+				// Auto-approval successful - update product status directly to ACTIVE
+				if err := h.repo.UpdateProductStatus(tenantIDStr, productID, models.ProductStatusActive, nil); err != nil {
+					c.JSON(http.StatusAccepted, gin.H{
+						"success":       true,
+						"message":       "Product auto-approved but status update failed",
+						"approval_id":   approvalID,
+						"status":        "approved",
+						"auto_approved": true,
+						"warning":       "Failed to update product status: " + err.Error(),
+					})
+					return
+				}
+
+				c.JSON(http.StatusOK, gin.H{
+					"success":       true,
+					"message":       "Product published successfully (auto-approved)",
+					"approval_id":   approvalID,
+					"status":        "active",
+					"auto_approved": true,
+				})
+				return
+			}
+			// Auto-approval failed - fall through to pending state
+			// Log the error but don't fail the request
+			fmt.Printf("Auto-approval failed for product %s: %v\n", product.ID.String(), autoApproveErr)
+		}
+
+		// Update product status to PENDING (manual approval required)
 		if err := h.repo.UpdateProductStatus(tenantIDStr, productID, models.ProductStatusPending, nil); err != nil {
 			// Log error but don't fail - approval was created successfully
 			c.JSON(http.StatusAccepted, gin.H{
 				"success":     true,
 				"message":     "Product submitted for approval (status update warning)",
-				"approval_id": approvalResp.Data.ID,
+				"approval_id": approvalID,
 				"status":      "pending_approval",
 				"warning":     "Failed to update product status: " + err.Error(),
 			})
@@ -645,17 +693,25 @@ func (h *ApprovalProductsHandler) SubmitProductForApproval(c *gin.Context) {
 		c.JSON(http.StatusAccepted, gin.H{
 			"success":     true,
 			"message":     "Product submitted for approval",
-			"approval_id": approvalResp.Data.ID,
+			"approval_id": approvalID,
 			"status":      "pending_approval",
 		})
 		return
+	}
+
+	// Build a more informative error message
+	errorMsg := "Failed to create approval request"
+	if approvalResp != nil && approvalResp.Error != "" {
+		errorMsg = approvalResp.Error
+	} else if approvalResp != nil && approvalResp.Message != "" {
+		errorMsg = approvalResp.Message
 	}
 
 	c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 		Success: false,
 		Error: models.Error{
 			Code:    "APPROVAL_FAILED",
-			Message: "Failed to create approval request",
+			Message: errorMsg,
 		},
 	})
 }
