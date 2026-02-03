@@ -43,7 +43,7 @@ func (h *ApprovalHandler) CheckApproval(c *gin.Context) {
 
 	resp, err := h.service.CheckApproval(c.Request.Context(), tenantID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *ApprovalHandler) ListPendingRequests(c *gin.Context) {
 
 	requests, total, err := h.service.ListPendingRequests(c.Request.Context(), tenantID, approverRole, statusFilter, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -190,7 +190,7 @@ func (h *ApprovalHandler) ListMyRequests(c *gin.Context) {
 
 	requests, total, err := h.service.ListMyRequests(c.Request.Context(), tenantID, userID, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -418,7 +418,7 @@ func (h *ApprovalHandler) GetRequestHistory(c *gin.Context) {
 
 	history, err := h.service.GetRequestHistory(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -436,7 +436,7 @@ func (h *ApprovalHandler) ListWorkflows(c *gin.Context) {
 
 	workflows, err := h.service.ListWorkflows(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -464,7 +464,7 @@ func (h *ApprovalHandler) GetWorkflow(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "workflow not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -502,7 +502,7 @@ func (h *ApprovalHandler) UpdateWorkflow(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "workflow not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

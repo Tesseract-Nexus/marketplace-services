@@ -27,7 +27,7 @@ func (h *SegmentHandler) ListSegments(c *gin.Context) {
 
 	segments, err := h.service.ListSegments(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *SegmentHandler) CreateSegment(c *gin.Context) {
 
 	segment, err := h.service.CreateSegment(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -94,7 +94,7 @@ func (h *SegmentHandler) UpdateSegment(c *gin.Context) {
 
 	segment, err := h.service.UpdateSegment(c.Request.Context(), tenantID, segmentID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -115,7 +115,7 @@ func (h *SegmentHandler) DeleteSegment(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteSegment(c.Request.Context(), tenantID, segmentID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -153,7 +153,7 @@ func (h *SegmentHandler) AddCustomersToSegment(c *gin.Context) {
 	}
 
 	if err := h.service.AddCustomersToSegment(c.Request.Context(), tenantID, segmentID, customerIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -191,7 +191,7 @@ func (h *SegmentHandler) RemoveCustomersFromSegment(c *gin.Context) {
 	}
 
 	if err := h.service.RemoveCustomersFromSegment(c.Request.Context(), tenantID, segmentID, customerIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -213,7 +213,7 @@ func (h *SegmentHandler) GetSegmentCustomers(c *gin.Context) {
 
 	customers, err := h.service.GetSegmentCustomers(c.Request.Context(), tenantID, segmentID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

@@ -48,7 +48,7 @@ func (h *ReturnHandlers) CreateReturn(c *gin.Context) {
 
 	var req services.CreateReturnRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *ReturnHandlers) CreateReturn(c *gin.Context) {
 	// Create return
 	ret, err := h.returnService.CreateReturnRequest(&req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create return"})
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *ReturnHandlers) GetReturn(c *gin.Context) {
 
 	ret, err := h.returnService.GetReturn(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Return not found", "details": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Return not found"})
 		return
 	}
 
@@ -120,7 +120,7 @@ func (h *ReturnHandlers) GetReturnByRMA(c *gin.Context) {
 
 	ret, err := h.returnService.GetReturnByRMA(rmaNumber)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Return not found", "details": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Return not found"})
 		return
 	}
 
@@ -184,7 +184,7 @@ func (h *ReturnHandlers) ListReturns(c *gin.Context) {
 	// Get returns
 	returns, total, err := h.returnService.ListReturns(tenantID, filters, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch returns", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch returns"})
 		return
 	}
 
@@ -253,7 +253,7 @@ func (h *ReturnHandlers) ApproveReturn(c *gin.Context) {
 	}
 
 	if err := h.returnService.ApproveReturn(id, approvedBy, req.Notes); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to approve return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to approve return"})
 		return
 	}
 
@@ -317,7 +317,7 @@ func (h *ReturnHandlers) RejectReturn(c *gin.Context) {
 	}
 
 	if err := h.returnService.RejectReturn(id, rejectedBy, req.Reason); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to reject return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to reject return"})
 		return
 	}
 
@@ -377,7 +377,7 @@ func (h *ReturnHandlers) MarkInTransit(c *gin.Context) {
 	}
 
 	if err := h.returnService.MarkReturnInTransit(id, req.TrackingNumber, req.Carrier, userID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update return status", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update return status"})
 		return
 	}
 
@@ -427,7 +427,7 @@ func (h *ReturnHandlers) MarkReceived(c *gin.Context) {
 	}
 
 	if err := h.returnService.MarkReturnReceived(id, userID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update return status", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update return status"})
 		return
 	}
 
@@ -502,7 +502,7 @@ func (h *ReturnHandlers) InspectReturn(c *gin.Context) {
 	}
 
 	if err := h.returnService.InspectReturn(id, inspectedBy, req.InspectionNotes, itemConditions); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to inspect return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to inspect return"})
 		return
 	}
 
@@ -567,7 +567,7 @@ func (h *ReturnHandlers) CompleteReturn(c *gin.Context) {
 
 	refundMethod := models.RefundMethod(req.RefundMethod)
 	if err := h.returnService.CompleteReturn(id, processedBy, refundMethod); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to complete return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to complete return"})
 		return
 	}
 
@@ -623,7 +623,7 @@ func (h *ReturnHandlers) CancelReturn(c *gin.Context) {
 	}
 
 	if err := h.returnService.CancelReturn(id, userID, req.Reason); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to cancel return", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to cancel return"})
 		return
 	}
 
@@ -646,7 +646,7 @@ func (h *ReturnHandlers) GetReturnStats(c *gin.Context) {
 
 	stats, err := h.returnService.GetReturnStats(tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch stats", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch stats"})
 		return
 	}
 
@@ -669,7 +669,7 @@ func (h *ReturnHandlers) GetReturnPolicy(c *gin.Context) {
 
 	policy, err := h.returnService.GetReturnPolicy(tenantID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Policy not found", "details": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Policy not found"})
 		return
 	}
 
@@ -694,14 +694,14 @@ func (h *ReturnHandlers) UpdateReturnPolicy(c *gin.Context) {
 
 	var policy models.ReturnPolicy
 	if err := c.ShouldBindJSON(&policy); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
 	policy.TenantID = tenantID
 
 	if err := h.returnService.UpdateReturnPolicy(&policy); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update policy", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update policy"})
 		return
 	}
 

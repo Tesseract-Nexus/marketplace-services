@@ -172,7 +172,7 @@ func (h *MarketingHandlers) SendCampaign(c *gin.Context) {
 
 	if err := h.service.SendCampaign(c.Request.Context(), tenantID, id); err != nil {
 		h.logger.WithError(err).Error("Failed to send campaign")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -657,7 +657,7 @@ func (h *MarketingHandlers) CreateCoupon(c *gin.Context) {
 
 	if err := h.service.CreateCoupon(c.Request.Context(), &coupon); err != nil {
 		h.logger.WithError(err).Error("Failed to create coupon")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -723,7 +723,7 @@ func (h *MarketingHandlers) UpdateCoupon(c *gin.Context) {
 
 	if err := h.service.UpdateCoupon(c.Request.Context(), &coupon); err != nil {
 		h.logger.WithError(err).Error("Failed to update coupon")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

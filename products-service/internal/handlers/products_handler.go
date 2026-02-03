@@ -1645,7 +1645,7 @@ func (h *ProductsHandler) CreateVariant(c *gin.Context) {
 	}
 
 	if err := h.repo.CreateProductVariant(tenantID, productID, &variant); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -1677,7 +1677,7 @@ func (h *ProductsHandler) GetVariants(c *gin.Context) {
 
 	variants, total, err := h.repo.GetProductVariants(tenantID, productID, page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -1710,7 +1710,7 @@ func (h *ProductsHandler) UpdateVariant(c *gin.Context) {
 	}
 
 	if err := h.repo.UpdateProductVariant(tenantID, variantID, &updates); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -1732,7 +1732,7 @@ func (h *ProductsHandler) DeleteVariant(c *gin.Context) {
 	}
 
 	if err := h.repo.DeleteProductVariant(tenantID, variantID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

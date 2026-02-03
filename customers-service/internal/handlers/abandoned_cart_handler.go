@@ -87,7 +87,7 @@ func (h *AbandonedCartHandler) List(c *gin.Context) {
 
 	result, err := h.service.List(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -153,7 +153,7 @@ func (h *AbandonedCartHandler) GetStats(c *gin.Context) {
 
 	stats, err := h.service.GetStats(c.Request.Context(), tenantID, from, to)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -175,7 +175,7 @@ func (h *AbandonedCartHandler) GetSettings(c *gin.Context) {
 
 	settings, err := h.service.GetSettings(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -204,7 +204,7 @@ func (h *AbandonedCartHandler) UpdateSettings(c *gin.Context) {
 	settings.TenantID = tenantID
 
 	if err := h.service.UpdateSettings(c.Request.Context(), &settings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -231,7 +231,7 @@ func (h *AbandonedCartHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.service.Delete(c.Request.Context(), tenantID, cartID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -259,7 +259,7 @@ func (h *AbandonedCartHandler) GetRecoveryAttempts(c *gin.Context) {
 
 	attempts, err := h.service.GetRecoveryAttempts(c.Request.Context(), cartID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -281,7 +281,7 @@ func (h *AbandonedCartHandler) TriggerDetection(c *gin.Context) {
 
 	count, err := h.service.DetectAbandonedCarts(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -321,7 +321,7 @@ func (h *AbandonedCartHandler) TriggerReminders(c *gin.Context) {
 
 	count, err := h.service.SendReminders(c.Request.Context(), tenantID, cartIDs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -362,7 +362,7 @@ func (h *AbandonedCartHandler) MarkRecovered(c *gin.Context) {
 	}
 
 	if err := h.service.MarkAsRecovered(c.Request.Context(), req.CartID, req.OrderID, req.Source, req.DiscountUsed, req.OrderValue); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -384,7 +384,7 @@ func (h *AbandonedCartHandler) ExpireOldCarts(c *gin.Context) {
 
 	count, err := h.service.ExpireOldCarts(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

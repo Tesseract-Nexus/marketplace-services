@@ -51,7 +51,7 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 
 	customer, err := h.service.CreateCustomer(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -221,7 +221,7 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 
 	customer, err := h.service.UpdateCustomer(c.Request.Context(), tenantID, customerID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -268,7 +268,7 @@ func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 
 	response, err := h.service.ListCustomers(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -289,7 +289,7 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteCustomer(c.Request.Context(), tenantID, customerID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -793,7 +793,7 @@ func (h *CustomerHandler) AddNote(c *gin.Context) {
 	note.TenantID = tenantID
 
 	if err := h.service.AddNote(c.Request.Context(), &note); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -815,7 +815,7 @@ func (h *CustomerHandler) GetNotes(c *gin.Context) {
 
 	notes, err := h.service.GetNotes(c.Request.Context(), tenantID, customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -842,7 +842,7 @@ func (h *CustomerHandler) GetCommunicationHistory(c *gin.Context) {
 
 	communications, err := h.service.GetCommunicationHistory(c.Request.Context(), tenantID, customerID, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -878,7 +878,7 @@ func (h *CustomerHandler) RecordOrder(c *gin.Context) {
 
 	customer, err := h.service.RecordOrder(c.Request.Context(), tenantID, customerID, req.TotalAmount)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

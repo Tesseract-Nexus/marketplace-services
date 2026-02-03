@@ -40,7 +40,7 @@ func (h *PaymentMethodHandler) GetPaymentMethods(c *gin.Context) {
 
 	paymentMethods, err := h.service.GetPaymentMethods(c.Request.Context(), tenantID, customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -61,7 +61,7 @@ func (h *PaymentMethodHandler) DeletePaymentMethod(c *gin.Context) {
 	}
 
 	if err := h.service.DeletePaymentMethod(c.Request.Context(), tenantID, methodID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 

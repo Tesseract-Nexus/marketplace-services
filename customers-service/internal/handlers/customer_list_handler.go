@@ -40,7 +40,7 @@ func (h *CustomerListHandler) GetLists(c *gin.Context) {
 
 	lists, err := h.service.GetLists(c.Request.Context(), tenantID, customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -121,7 +121,7 @@ func (h *CustomerListHandler) CreateList(c *gin.Context) {
 
 	list, err := h.service.CreateList(c.Request.Context(), tenantID, customerID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *CustomerListHandler) UpdateList(c *gin.Context) {
 
 	list, err := h.service.UpdateList(c.Request.Context(), listID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -186,7 +186,7 @@ func (h *CustomerListHandler) DeleteList(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -224,7 +224,7 @@ func (h *CustomerListHandler) AddItem(c *gin.Context) {
 	if listIDOrSlug == "default" {
 		item, err := h.service.AddToDefaultList(c.Request.Context(), tenantID, customerID, req)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 			return
 		}
 		c.JSON(http.StatusCreated, item)
@@ -239,7 +239,7 @@ func (h *CustomerListHandler) AddItem(c *gin.Context) {
 
 	item, err := h.service.AddItem(c.Request.Context(), listID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -266,7 +266,7 @@ func (h *CustomerListHandler) RemoveItem(c *gin.Context) {
 	}
 
 	if err := h.service.RemoveItem(c.Request.Context(), itemID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -302,7 +302,7 @@ func (h *CustomerListHandler) RemoveItemByProduct(c *gin.Context) {
 	// Handle "default" slug specially
 	if listIDOrSlug == "default" {
 		if err := h.service.RemoveFromDefaultList(c.Request.Context(), tenantID, customerID, productID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Item removed"})
@@ -316,7 +316,7 @@ func (h *CustomerListHandler) RemoveItemByProduct(c *gin.Context) {
 	}
 
 	if err := h.service.RemoveItemByProductID(c.Request.Context(), listID, productID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -351,7 +351,7 @@ func (h *CustomerListHandler) MoveItem(c *gin.Context) {
 	}
 
 	if err := h.service.MoveItem(c.Request.Context(), itemID, req.ToListID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -385,7 +385,7 @@ func (h *CustomerListHandler) CheckProduct(c *gin.Context) {
 
 	inAnyList, err := h.service.IsInAnyList(c.Request.Context(), customerID, productID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
@@ -394,7 +394,7 @@ func (h *CustomerListHandler) CheckProduct(c *gin.Context) {
 	if inAnyList {
 		listsContaining, err = h.service.GetListsContainingProduct(c.Request.Context(), customerID, productID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 			return
 		}
 	}
@@ -426,7 +426,7 @@ func (h *CustomerListHandler) GetDefaultList(c *gin.Context) {
 
 	list, err := h.service.GetDefaultList(c.Request.Context(), tenantID, customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
 	}
 
