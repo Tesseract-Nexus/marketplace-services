@@ -449,9 +449,9 @@ func (m *SchemaMapper) MapExternalCategoryToInternal(
 		TenantID:    m.tenantID,
 		CreatedByID: "marketplace-sync",
 		UpdatedByID: "marketplace-sync",
-		Name:        external.Name,
+		Name:        cleanMarketplaceText(external.Name),
 		Slug:        slug,
-		Description: strPtr(external.Description),
+		Description: cleanMarketplaceTextPtr(strPtr(external.Description)),
 		ImageURL:    strPtr(external.ImageURL),
 		ParentID:    parentID,
 		Level:       external.Level,
@@ -567,11 +567,11 @@ func (m *SchemaMapper) mapAmazonProduct(external *clients.ExternalProduct) (*Int
 		TenantID:          m.tenantID,
 		VendorID:          m.vendorID,
 		CategoryID:        external.CategoryID,
-		Name:              external.Title,
+		Name:              cleanMarketplaceText(external.Title),
 		Slug:              &slug,
 		SKU:               m.generateSKU(external.SKU, external.ID, "AMZ"),
-		Brand:             strPtr(external.Brand),
-		Description:       strPtr(external.Description),
+		Brand:             cleanMarketplaceTextPtr(strPtr(external.Brand)),
+		Description:       cleanMarketplaceTextPtr(strPtr(external.Description)),
 		Price:             formatPrice(external.Price),
 		ComparePrice:      formatPricePtr(external.CompareAtPrice),
 		CostPrice:         formatPricePtr(external.CostPrice),
@@ -667,11 +667,11 @@ func (m *SchemaMapper) mapShopifyProduct(external *clients.ExternalProduct) (*In
 		TenantID:          m.tenantID,
 		VendorID:          m.vendorID,
 		CategoryID:        external.CategoryID,
-		Name:              external.Title,
+		Name:              cleanMarketplaceText(external.Title),
 		Slug:              &slug,
 		SKU:               m.generateSKU(external.SKU, external.ID, "SHOP"),
-		Brand:             strPtr(external.Vendor),
-		Description:       strPtr(external.Description),
+		Brand:             cleanMarketplaceTextPtr(strPtr(external.Vendor)),
+		Description:       cleanMarketplaceTextPtr(strPtr(external.Description)),
 		Price:             formatPrice(external.Price),
 		ComparePrice:      formatPricePtr(external.CompareAtPrice),
 		CostPrice:         formatPricePtr(external.CostPrice),
@@ -727,10 +727,10 @@ func (m *SchemaMapper) mapDukaanProduct(external *clients.ExternalProduct) (*Int
 		TenantID:        m.tenantID,
 		VendorID:        m.vendorID,
 		CategoryID:      external.CategoryID,
-		Name:            external.Title,
+		Name:            cleanMarketplaceText(external.Title),
 		Slug:            &slug,
 		SKU:             m.generateSKU(external.SKU, external.ID, "DUK"),
-		Description:     strPtr(external.Description),
+		Description:     cleanMarketplaceTextPtr(strPtr(external.Description)),
 		Price:           formatPrice(external.Price),
 		ComparePrice:    formatPricePtr(external.CompareAtPrice),
 		Status:          mapProductStatus(external.Status),
@@ -980,7 +980,7 @@ func (m *SchemaMapper) mapImages(externalImages []clients.ExternalImage, maxImag
 		images = append(images, ProductImage{
 			ID:       img.ID,
 			URL:      url,
-			AltText:  strPtr(img.AltText),
+			AltText:  cleanMarketplaceTextPtr(strPtr(img.AltText)),
 			Position: img.Position,
 			Width:    intPtr(img.Width),
 			Height:   intPtr(img.Height),
@@ -1007,8 +1007,8 @@ func (m *SchemaMapper) mapVideos(externalVideos []clients.ExternalVideo, maxVide
 		videos = append(videos, ProductVideo{
 			ID:           vid.ID,
 			URL:          url,
-			Title:        strPtr(vid.Title),
-			Description:  strPtr(vid.Description),
+			Title:        cleanMarketplaceTextPtr(strPtr(vid.Title)),
+			Description:  cleanMarketplaceTextPtr(strPtr(vid.Description)),
 			ThumbnailURL: strPtr(vid.ThumbnailURL),
 			Duration:     intPtr(vid.Duration),
 			Size:         size,
@@ -1052,7 +1052,7 @@ func (m *SchemaMapper) mapVariants(externalVariants []clients.ExternalVariant) [
 		variant := InternalVariant{
 			ID:              uuid.New(),
 			SKU:             v.SKU,
-			Name:            v.Title,
+			Name:            cleanMarketplaceText(v.Title),
 			Price:           formatPrice(v.Price),
 			ComparePrice:    formatPricePtr(v.CompareAtPrice),
 			CostPrice:       formatPricePtr(v.CostPrice),
@@ -1095,7 +1095,7 @@ func (m *SchemaMapper) mapOrderItems(
 			ID:          uuid.New(),
 			OrderID:     orderID,
 			ProductID:   productID,
-			ProductName: li.Title,
+			ProductName: cleanMarketplaceText(li.Title),
 			SKU:         li.SKU,
 			Image:       li.ImageURL,
 			Quantity:    li.Quantity,
@@ -1429,6 +1429,43 @@ func defaultStr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// removeFlagEmojis removes flag emojis (Regional Indicator Symbol pairs) from a string.
+// Flag emojis are composed of pairs of Regional Indicator Symbols (U+1F1E6 to U+1F1FF).
+func removeFlagEmojis(s string) string {
+	// Regional Indicator Symbols range: U+1F1E6 to U+1F1FF
+	// When two are combined, they form a flag emoji
+	var result []rune
+	runes := []rune(s)
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		// Check if current rune is a Regional Indicator Symbol
+		if r >= 0x1F1E6 && r <= 0x1F1FF {
+			// Skip this rune and the next one if it's also a Regional Indicator
+			if i+1 < len(runes) && runes[i+1] >= 0x1F1E6 && runes[i+1] <= 0x1F1FF {
+				i++ // Skip the pair
+				continue
+			}
+		}
+		result = append(result, r)
+	}
+	return string(result)
+}
+
+// cleanMarketplaceText removes flag emojis from marketplace text fields
+func cleanMarketplaceText(s string) string {
+	return removeFlagEmojis(s)
+}
+
+// cleanMarketplaceTextPtr removes flag emojis from marketplace text fields (pointer version)
+func cleanMarketplaceTextPtr(s *string) *string {
+	if s == nil || *s == "" {
+		return s
+	}
+	cleaned := removeFlagEmojis(*s)
+	return &cleaned
 }
 
 // ToJSON converts a struct to JSON bytes
