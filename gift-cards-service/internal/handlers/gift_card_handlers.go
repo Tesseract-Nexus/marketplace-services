@@ -26,6 +26,7 @@ func NewGiftCardHandler(repo *repository.GiftCardRepository, publisher *events.P
 func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	userID, userExists := c.Get("user_id")
+	userEmail, _ := c.Get("user_email")
 
 	var req models.CreateGiftCardRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -87,14 +88,24 @@ func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 		if giftCard.Message != nil {
 			message = *giftCard.Message
 		}
-		// Note: userID is a UUID, not an email - purchaser email is not available in this context
-		var purchaserEmail string
+		var purchaserID, purchaserEmailStr string
+		if userExists && userID != nil {
+			if uid, ok := userID.(string); ok {
+				purchaserID = uid
+			}
+		}
+		if userEmail != nil {
+			if email, ok := userEmail.(string); ok {
+				purchaserEmailStr = email
+			}
+		}
 		if err := h.publisher.PublishGiftCardCreated(
 			context.Background(),
 			tenantID.(string),
 			giftCard.ID.String(),
 			giftCard.Code,
-			purchaserEmail,
+			purchaserID,
+			purchaserEmailStr,
 			senderName,
 			recipientEmail,
 			recipientName,
