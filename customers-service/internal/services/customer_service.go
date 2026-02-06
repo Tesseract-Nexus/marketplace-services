@@ -46,6 +46,7 @@ type CreateCustomerRequest struct {
 	Phone          string               `json:"phone"`
 	Country        string               `json:"country"`     // Full country name (e.g., "Australia")
 	CountryCode    string               `json:"countryCode"` // ISO 2-letter code (e.g., "AU")
+	DateOfBirth    *time.Time           `json:"dateOfBirth"`
 	CustomerType   models.CustomerType  `json:"customerType"`
 	MarketingOptIn bool                 `json:"marketingOptIn"`
 	Tags           []string             `json:"tags"`
@@ -81,6 +82,7 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, req CreateCustomer
 		Phone:          req.Phone,
 		Country:        req.Country,
 		CountryCode:    req.CountryCode,
+		DateOfBirth:    req.DateOfBirth,
 		Status:         models.CustomerStatusActive,
 		CustomerType:   req.CustomerType,
 		MarketingOptIn: req.MarketingOptIn,
@@ -194,6 +196,7 @@ type UpdateCustomerRequest struct {
 	FirstName      *string               `json:"firstName"`
 	LastName       *string               `json:"lastName"`
 	Phone          *string               `json:"phone"`
+	DateOfBirth    *time.Time            `json:"dateOfBirth"`
 	Country        *string               `json:"country"`     // Full country name (e.g., "Australia")
 	CountryCode    *string               `json:"countryCode"` // ISO 2-letter code (e.g., "AU")
 	Status         *models.CustomerStatus `json:"status"`
@@ -219,6 +222,9 @@ func (s *CustomerService) UpdateCustomer(ctx context.Context, tenantID string, c
 	}
 	if req.Phone != nil {
 		customer.Phone = *req.Phone
+	}
+	if req.DateOfBirth != nil {
+		customer.DateOfBirth = req.DateOfBirth
 	}
 	if req.Country != nil {
 		customer.Country = *req.Country

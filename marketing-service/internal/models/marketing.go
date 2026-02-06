@@ -228,6 +228,9 @@ type CustomerLoyalty struct {
 	ReferralCode    string          `gorm:"type:varchar(20);uniqueIndex" json:"referralCode,omitempty"`
 	ReferredBy      *uuid.UUID      `gorm:"type:uuid;index:idx_loyalty_referred_by" json:"referredBy,omitempty"`
 
+	// Personal
+	DateOfBirth     *time.Time      `gorm:"type:date" json:"dateOfBirth,omitempty"`
+
 	// Metadata
 	LastEarned      *time.Time      `json:"lastEarned,omitempty"`
 	LastRedeemed    *time.Time      `json:"lastRedeemed,omitempty"`

@@ -573,13 +573,14 @@ func (h *MarketingHandlers) EnrollCustomer(c *gin.Context) {
 		return
 	}
 
-	// Check for optional referral code in request body
+	// Check for optional referral code and date of birth in request body
 	var req struct {
-		ReferralCode string `json:"referralCode"`
+		ReferralCode string     `json:"referralCode"`
+		DateOfBirth  *time.Time `json:"dateOfBirth"`
 	}
-	c.ShouldBindJSON(&req) // Ignore error - referral code is optional
+	c.ShouldBindJSON(&req) // Ignore error - fields are optional
 
-	loyalty, err := h.service.EnrollCustomerWithReferral(c.Request.Context(), tenantID, customerID, req.ReferralCode)
+	loyalty, err := h.service.EnrollCustomerWithReferral(c.Request.Context(), tenantID, customerID, req.ReferralCode, req.DateOfBirth)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to enroll customer")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enroll customer"})
@@ -900,13 +901,14 @@ func (h *MarketingHandlers) StorefrontEnrollCustomer(c *gin.Context) {
 		return
 	}
 
-	// Check for optional referral code in request body
+	// Check for optional referral code and date of birth in request body
 	var req struct {
-		ReferralCode string `json:"referralCode"`
+		ReferralCode string     `json:"referralCode"`
+		DateOfBirth  *time.Time `json:"dateOfBirth"`
 	}
-	c.ShouldBindJSON(&req) // Ignore error - referral code is optional
+	c.ShouldBindJSON(&req) // Ignore error - fields are optional
 
-	loyalty, err := h.service.EnrollCustomerWithReferral(c.Request.Context(), tenantID, customerID, req.ReferralCode)
+	loyalty, err := h.service.EnrollCustomerWithReferral(c.Request.Context(), tenantID, customerID, req.ReferralCode, req.DateOfBirth)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to enroll customer")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enroll customer"})
@@ -1043,6 +1045,26 @@ func (h *MarketingHandlers) GetStorefrontLoyaltyTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"transactions": txns,
 		"total":        total,
+	})
+}
+
+// ===== BIRTHDAY BONUSES =====
+
+// TriggerBirthdayBonuses triggers birthday bonus processing for a tenant
+// POST /api/v1/loyalty/birthday-bonuses
+func (h *MarketingHandlers) TriggerBirthdayBonuses(c *gin.Context) {
+	tenantID := c.GetString("tenant_id")
+
+	awarded, err := h.service.AwardBirthdayBonuses(c.Request.Context(), tenantID)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to process birthday bonuses")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process birthday bonuses"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Birthday bonuses processed",
+		"awarded": awarded,
 	})
 }
 

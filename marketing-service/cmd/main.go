@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -220,6 +222,7 @@ func main() {
 			loyalty.GET("/customers/:customer_id/transactions", rbacMiddleware.RequirePermission(rbac.PermissionMarketingLoyaltyView), marketingHandlers.GetLoyaltyTransactions)
 			loyalty.GET("/customers/:customer_id/referrals", rbacMiddleware.RequirePermission(rbac.PermissionMarketingLoyaltyView), marketingHandlers.GetReferrals)
 			loyalty.GET("/customers/:customer_id/referrals/stats", rbacMiddleware.RequirePermission(rbac.PermissionMarketingLoyaltyView), marketingHandlers.GetReferralStats)
+			loyalty.POST("/birthday-bonuses", rbacMiddleware.RequirePermission(rbac.PermissionMarketingLoyaltyManage), marketingHandlers.TriggerBirthdayBonuses)
 		}
 
 		// Coupons with RBAC - uses marketing:coupons:view and marketing:coupons:manage
@@ -254,6 +257,24 @@ func main() {
 
 	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Start daily birthday bonus cron
+	go func() {
+		// Run once on startup (after a short delay to let DB settle)
+		time.Sleep(30 * time.Second)
+		ctx := context.Background()
+		if err := marketingService.AwardBirthdayBonusesAllTenants(ctx); err != nil {
+			logger.WithError(err).Error("Failed to run initial birthday bonuses")
+		}
+		// Then run daily
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := marketingService.AwardBirthdayBonusesAllTenants(ctx); err != nil {
+				logger.WithError(err).Error("Failed to run daily birthday bonuses")
+			}
+		}
+	}()
 
 	// Start server
 	port := os.Getenv("PORT")

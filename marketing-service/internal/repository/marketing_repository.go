@@ -488,6 +488,37 @@ func (r *MarketingRepository) ExpirePoints(ctx context.Context, tenantID string)
 	return nil
 }
 
+// ===== BIRTHDAY BONUSES =====
+
+// GetCustomerLoyaltiesByBirthday retrieves customer loyalties with a birthday matching the given month and day
+func (r *MarketingRepository) GetCustomerLoyaltiesByBirthday(ctx context.Context, tenantID string, month int, day int) ([]*models.CustomerLoyalty, error) {
+	var loyalties []*models.CustomerLoyalty
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND EXTRACT(MONTH FROM date_of_birth) = ? AND EXTRACT(DAY FROM date_of_birth) = ?", tenantID, month, day).
+		Find(&loyalties).Error
+	return loyalties, err
+}
+
+// HasBirthdayBonusThisYear checks if a customer has already received a birthday bonus this year
+func (r *MarketingRepository) HasBirthdayBonusThisYear(ctx context.Context, tenantID string, customerID uuid.UUID, year int) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&models.LoyaltyTransaction{}).
+		Where("tenant_id = ? AND customer_id = ? AND type = ? AND description LIKE ? AND EXTRACT(YEAR FROM created_at) = ?",
+			tenantID, customerID, models.LoyaltyTxnBonus, "Birthday bonus%", year).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// GetActiveBirthdayBonusTenantIDs returns distinct tenant IDs with active loyalty programs that have birthday bonuses
+func (r *MarketingRepository) GetActiveBirthdayBonusTenantIDs(ctx context.Context) ([]string, error) {
+	var tenantIDs []string
+	err := r.db.WithContext(ctx).Model(&models.LoyaltyProgram{}).
+		Where("is_active = ? AND birthday_bonus > ?", true, 0).
+		Distinct().
+		Pluck("tenant_id", &tenantIDs).Error
+	return tenantIDs, err
+}
+
 // ===== COUPONS =====
 
 // CreateCoupon creates a new coupon

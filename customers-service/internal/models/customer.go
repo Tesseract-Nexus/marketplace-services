@@ -58,6 +58,9 @@ type Customer struct {
 	LastOrderDate      *time.Time `json:"lastOrderDate"`
 	FirstOrderDate     *time.Time `json:"firstOrderDate"`
 
+	// Personal
+	DateOfBirth *time.Time `json:"dateOfBirth,omitempty" gorm:"type:date"`
+
 	// Location/Region
 	Country     string `json:"country" gorm:"type:varchar(100)"` // Full country name (e.g., "Australia")
 	CountryCode string `json:"countryCode" gorm:"type:varchar(2);index:idx_customers_tenant_country"` // ISO 2-letter code (e.g., "AU")

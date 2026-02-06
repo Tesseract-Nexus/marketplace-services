@@ -326,11 +326,11 @@ func (s *MarketingService) UpdateLoyaltyProgram(ctx context.Context, program *mo
 
 // EnrollCustomer enrolls a customer in the loyalty program
 func (s *MarketingService) EnrollCustomer(ctx context.Context, tenantID string, customerID uuid.UUID) (*models.CustomerLoyalty, error) {
-	return s.EnrollCustomerWithReferral(ctx, tenantID, customerID, "")
+	return s.EnrollCustomerWithReferral(ctx, tenantID, customerID, "", nil)
 }
 
-// EnrollCustomerWithReferral enrolls a customer with optional referral code
-func (s *MarketingService) EnrollCustomerWithReferral(ctx context.Context, tenantID string, customerID uuid.UUID, referralCode string) (*models.CustomerLoyalty, error) {
+// EnrollCustomerWithReferral enrolls a customer with optional referral code and date of birth
+func (s *MarketingService) EnrollCustomerWithReferral(ctx context.Context, tenantID string, customerID uuid.UUID, referralCode string, dateOfBirth *time.Time) (*models.CustomerLoyalty, error) {
 	// Check if already enrolled
 	existing, _ := s.repo.GetCustomerLoyalty(ctx, tenantID, customerID)
 	if existing != nil {
@@ -369,6 +369,7 @@ func (s *MarketingService) EnrollCustomerWithReferral(ctx context.Context, tenan
 		AvailablePoints: program.SignupBonus,
 		LifetimePoints:  program.SignupBonus,
 		ReferralCode:    newReferralCode,
+		DateOfBirth:     dateOfBirth,
 		JoinedAt:        time.Now(),
 	}
 
@@ -626,6 +627,104 @@ func (s *MarketingService) GetCustomerLoyalty(ctx context.Context, tenantID stri
 // GetLoyaltyTransactions retrieves transactions for a customer
 func (s *MarketingService) GetLoyaltyTransactions(ctx context.Context, tenantID string, customerID uuid.UUID, limit, offset int) ([]*models.LoyaltyTransaction, int64, error) {
 	return s.repo.GetLoyaltyTransactions(ctx, tenantID, customerID, limit, offset)
+}
+
+// ===== BIRTHDAY BONUSES =====
+
+// AwardBirthdayBonuses awards birthday bonuses to all eligible customers for a tenant
+func (s *MarketingService) AwardBirthdayBonuses(ctx context.Context, tenantID string) (int, error) {
+	program, err := s.repo.GetLoyaltyProgram(ctx, tenantID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get loyalty program: %w", err)
+	}
+
+	if program.BirthdayBonus == 0 || !program.IsActive {
+		return 0, nil
+	}
+
+	now := time.Now()
+	month := int(now.Month())
+	day := now.Day()
+	year := now.Year()
+
+	loyalties, err := s.repo.GetCustomerLoyaltiesByBirthday(ctx, tenantID, month, day)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get birthday customers: %w", err)
+	}
+
+	awarded := 0
+	for _, loyalty := range loyalties {
+		// Check if already awarded this year
+		alreadyAwarded, err := s.repo.HasBirthdayBonusThisYear(ctx, tenantID, loyalty.CustomerID, year)
+		if err != nil {
+			s.logger.WithError(err).Warn("Failed to check birthday bonus dedup")
+			continue
+		}
+		if alreadyAwarded {
+			continue
+		}
+
+		// Award points
+		loyalty.TotalPoints += program.BirthdayBonus
+		loyalty.AvailablePoints += program.BirthdayBonus
+		loyalty.LifetimePoints += program.BirthdayBonus
+		earnedAt := time.Now()
+		loyalty.LastEarned = &earnedAt
+
+		if err := s.repo.UpdateCustomerLoyalty(ctx, loyalty); err != nil {
+			s.logger.WithError(err).Error("Failed to update loyalty for birthday bonus")
+			continue
+		}
+
+		// Create transaction
+		txn := &models.LoyaltyTransaction{
+			TenantID:    tenantID,
+			CustomerID:  loyalty.CustomerID,
+			LoyaltyID:   loyalty.ID,
+			Type:        models.LoyaltyTxnBonus,
+			Points:      program.BirthdayBonus,
+			Description: fmt.Sprintf("Birthday bonus %d", year),
+		}
+		if err := s.repo.CreateLoyaltyTransaction(ctx, txn); err != nil {
+			s.logger.WithError(err).Error("Failed to create birthday bonus transaction")
+			continue
+		}
+
+		awarded++
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"tenant_id": tenantID,
+		"awarded":   awarded,
+		"month":     month,
+		"day":       day,
+	}).Info("Birthday bonuses processed")
+
+	return awarded, nil
+}
+
+// AwardBirthdayBonusesAllTenants awards birthday bonuses across all active tenants
+func (s *MarketingService) AwardBirthdayBonusesAllTenants(ctx context.Context) error {
+	tenantIDs, err := s.repo.GetActiveBirthdayBonusTenantIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get active tenant IDs: %w", err)
+	}
+
+	for _, tenantID := range tenantIDs {
+		awarded, err := s.AwardBirthdayBonuses(ctx, tenantID)
+		if err != nil {
+			s.logger.WithError(err).WithField("tenant_id", tenantID).Error("Failed to award birthday bonuses for tenant")
+			continue
+		}
+		if awarded > 0 {
+			s.logger.WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"awarded":   awarded,
+			}).Info("Birthday bonuses awarded for tenant")
+		}
+	}
+
+	return nil
 }
 
 // ===== COUPONS =====
