@@ -40,9 +40,15 @@ func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 		return
 	}
 
+	// Use currency from request; fall back to DB default if not provided
+	currencyCode := req.CurrencyCode
+	if currencyCode == "" {
+		currencyCode = "USD"
+	}
+
 	giftCard := &models.GiftCard{
 		InitialBalance: req.InitialBalance,
-		CurrencyCode:   "USD",
+		CurrencyCode:   currencyCode,
 		RecipientEmail: req.RecipientEmail,
 		RecipientName:  req.RecipientName,
 		SenderName:     req.SenderName,
@@ -56,10 +62,6 @@ func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 		if uid, ok := userID.(string); ok && uid != "" {
 			giftCard.CreatedBy = stringPtr(uid)
 		}
-	}
-
-	if req.CurrencyCode != "" {
-		giftCard.CurrencyCode = req.CurrencyCode
 	}
 
 	if err := h.repo.CreateGiftCard(tenantID.(string), giftCard); err != nil {
