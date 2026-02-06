@@ -87,12 +87,8 @@ func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 		if giftCard.Message != nil {
 			message = *giftCard.Message
 		}
+		// Note: userID is a UUID, not an email - purchaser email is not available in this context
 		var purchaserEmail string
-		if userExists && userID != nil {
-			if uid, ok := userID.(string); ok {
-				purchaserEmail = uid
-			}
-		}
 		if err := h.publisher.PublishGiftCardCreated(
 			context.Background(),
 			tenantID.(string),
