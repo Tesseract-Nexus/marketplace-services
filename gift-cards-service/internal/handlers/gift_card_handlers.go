@@ -1,22 +1,25 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gift-cards-service/internal/events"
 	"gift-cards-service/internal/models"
 	"gift-cards-service/internal/repository"
 )
 
 type GiftCardHandler struct {
-	repo *repository.GiftCardRepository
+	repo      *repository.GiftCardRepository
+	publisher *events.Publisher
 }
 
-func NewGiftCardHandler(repo *repository.GiftCardRepository) *GiftCardHandler {
-	return &GiftCardHandler{repo: repo}
+func NewGiftCardHandler(repo *repository.GiftCardRepository, publisher *events.Publisher) *GiftCardHandler {
+	return &GiftCardHandler{repo: repo, publisher: publisher}
 }
 
 // CreateGiftCard creates a new gift card
@@ -67,6 +70,45 @@ func (h *GiftCardHandler) CreateGiftCard(c *gin.Context) {
 			},
 		})
 		return
+	}
+
+	// Publish gift card created event for notifications (email to recipient)
+	if h.publisher != nil {
+		var recipientEmail, recipientName, senderName, message string
+		if giftCard.RecipientEmail != nil {
+			recipientEmail = *giftCard.RecipientEmail
+		}
+		if giftCard.RecipientName != nil {
+			recipientName = *giftCard.RecipientName
+		}
+		if giftCard.SenderName != nil {
+			senderName = *giftCard.SenderName
+		}
+		if giftCard.Message != nil {
+			message = *giftCard.Message
+		}
+		var purchaserEmail string
+		if userExists && userID != nil {
+			if uid, ok := userID.(string); ok {
+				purchaserEmail = uid
+			}
+		}
+		if err := h.publisher.PublishGiftCardCreated(
+			context.Background(),
+			tenantID.(string),
+			giftCard.ID.String(),
+			giftCard.Code,
+			purchaserEmail,
+			senderName,
+			recipientEmail,
+			recipientName,
+			message,
+			giftCard.InitialBalance,
+			giftCard.CurrencyCode,
+		); err != nil {
+			// Log but don't fail the request - gift card was created successfully
+			c.Error(err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, models.GiftCardResponse{

@@ -102,7 +102,7 @@ func main() {
 	giftCardRepo := repository.NewGiftCardRepository(db, redisClient)
 
 	// Initialize handlers
-	giftCardHandler := handlers.NewGiftCardHandler(giftCardRepo)
+	giftCardHandler := handlers.NewGiftCardHandler(giftCardRepo, eventsPublisher)
 
 	// Initialize RBAC middleware
 	staffServiceURL := os.Getenv("STAFF_SERVICE_URL")

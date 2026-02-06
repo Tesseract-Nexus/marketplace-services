@@ -41,7 +41,7 @@ func NewPublisher(logger *logrus.Logger) (*Publisher, error) {
 }
 
 // PublishGiftCardCreated publishes a gift card created event
-func (p *Publisher) PublishGiftCardCreated(ctx context.Context, tenantID, giftCardID, giftCardCode, purchaserEmail, purchaserName, recipientEmail, recipientName string, initialBalance float64, currency string) error {
+func (p *Publisher) PublishGiftCardCreated(ctx context.Context, tenantID, giftCardID, giftCardCode, purchaserEmail, purchaserName, recipientEmail, recipientName, message string, initialBalance float64, currency string) error {
 	event := events.NewGiftCardEvent(events.GiftCardCreated, tenantID)
 	event.GiftCardID = giftCardID
 	event.GiftCardCode = giftCardCode
@@ -49,6 +49,7 @@ func (p *Publisher) PublishGiftCardCreated(ctx context.Context, tenantID, giftCa
 	event.PurchaserName = purchaserName
 	event.RecipientEmail = recipientEmail
 	event.RecipientName = recipientName
+	event.Message = message
 	event.InitialBalance = initialBalance
 	event.CurrentBalance = initialBalance
 	event.Currency = currency
