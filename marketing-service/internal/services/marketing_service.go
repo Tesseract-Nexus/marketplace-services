@@ -321,6 +321,16 @@ func (s *MarketingService) UpdateLoyaltyProgram(ctx context.Context, program *mo
 		return fmt.Errorf("invalid loyalty program: %w", err)
 	}
 
+	// Fetch existing program to get the ID (admin may not send it)
+	existing, err := s.repo.GetLoyaltyProgram(ctx, program.TenantID)
+	if err != nil {
+		return fmt.Errorf("loyalty program not found: %w", err)
+	}
+
+	// Preserve the existing ID and timestamps
+	program.ID = existing.ID
+	program.CreatedAt = existing.CreatedAt
+
 	return s.repo.UpdateLoyaltyProgram(ctx, program)
 }
 
