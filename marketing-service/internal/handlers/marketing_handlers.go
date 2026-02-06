@@ -9,21 +9,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
+	marketingevents "marketing-service/internal/events"
 	"marketing-service/internal/models"
 	"marketing-service/internal/services"
 )
 
 // MarketingHandlers handles HTTP requests for marketing
 type MarketingHandlers struct {
-	service *services.MarketingService
-	logger  *logrus.Logger
+	service   *services.MarketingService
+	publisher *marketingevents.Publisher
+	logger    *logrus.Logger
 }
 
 // NewMarketingHandlers creates a new marketing handlers instance
-func NewMarketingHandlers(service *services.MarketingService, logger *logrus.Logger) *MarketingHandlers {
+func NewMarketingHandlers(service *services.MarketingService, publisher *marketingevents.Publisher, logger *logrus.Logger) *MarketingHandlers {
 	return &MarketingHandlers{
-		service: service,
-		logger:  logger,
+		service:   service,
+		publisher: publisher,
+		logger:    logger,
 	}
 }
 
@@ -48,6 +51,12 @@ func (h *MarketingHandlers) CreateCampaign(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to create campaign")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create campaign"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCampaignCreated(c.Request.Context(), tenantID, campaign.ID.String(), campaign.Name, string(campaign.Type), string(campaign.Channel), userID); err != nil {
+			h.logger.WithError(err).Error("Failed to publish campaign created event")
+		}
 	}
 
 	c.JSON(http.StatusCreated, campaign)
@@ -138,6 +147,12 @@ func (h *MarketingHandlers) UpdateCampaign(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishCampaignUpdated(c.Request.Context(), tenantID, campaign.ID.String(), campaign.Name, string(campaign.Status), c.GetString("user_id")); err != nil {
+			h.logger.WithError(err).Error("Failed to publish campaign updated event")
+		}
+	}
+
 	c.JSON(http.StatusOK, campaign)
 }
 
@@ -157,6 +172,12 @@ func (h *MarketingHandlers) DeleteCampaign(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishCampaignDeleted(c.Request.Context(), tenantID, id.String(), "", c.GetString("user_id")); err != nil {
+			h.logger.WithError(err).Error("Failed to publish campaign deleted event")
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Campaign deleted successfully"})
 }
 
@@ -174,6 +195,12 @@ func (h *MarketingHandlers) SendCampaign(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to send campaign")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCampaignSent(c.Request.Context(), tenantID, id.String(), "", "", "", 0, c.GetString("user_id")); err != nil {
+			h.logger.WithError(err).Error("Failed to publish campaign sent event")
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Campaign sent successfully"})
@@ -201,6 +228,12 @@ func (h *MarketingHandlers) ScheduleCampaign(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to schedule campaign")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule campaign"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCampaignScheduled(c.Request.Context(), tenantID, id.String(), "", req.ScheduledAt.Format(time.RFC3339), c.GetString("user_id")); err != nil {
+			h.logger.WithError(err).Error("Failed to publish campaign scheduled event")
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Campaign scheduled successfully"})
@@ -458,6 +491,12 @@ func (h *MarketingHandlers) CreateLoyaltyProgram(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishLoyaltyProgramCreated(c.Request.Context(), tenantID, program.ID.String(), program.Name); err != nil {
+			h.logger.WithError(err).Error("Failed to publish loyalty program created event")
+		}
+	}
+
 	c.JSON(http.StatusCreated, program)
 }
 
@@ -493,6 +532,12 @@ func (h *MarketingHandlers) UpdateLoyaltyProgram(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to update loyalty program")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update loyalty program"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishLoyaltyProgramUpdated(c.Request.Context(), tenantID, program.ID.String(), program.Name); err != nil {
+			h.logger.WithError(err).Error("Failed to publish loyalty program updated event")
+		}
 	}
 
 	c.JSON(http.StatusOK, program)
@@ -539,6 +584,12 @@ func (h *MarketingHandlers) EnrollCustomer(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to enroll customer")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enroll customer"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCustomerEnrolled(c.Request.Context(), tenantID, "", "", customerID.String()); err != nil {
+			h.logger.WithError(err).Error("Failed to publish customer enrolled event")
+		}
 	}
 
 	c.JSON(http.StatusCreated, loyalty)
@@ -612,6 +663,12 @@ func (h *MarketingHandlers) RedeemPoints(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishPointsRedeemed(c.Request.Context(), tenantID, customerID.String(), req.Points, req.Description); err != nil {
+			h.logger.WithError(err).Error("Failed to publish points redeemed event")
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Points redeemed successfully"})
 }
 
@@ -659,6 +716,12 @@ func (h *MarketingHandlers) CreateCoupon(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to create coupon")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An internal error occurred"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCouponCreated(c.Request.Context(), tenantID, coupon.ID.String(), coupon.Code, string(coupon.Type), coupon.DiscountValue, userID); err != nil {
+			h.logger.WithError(err).Error("Failed to publish coupon created event")
+		}
 	}
 
 	c.JSON(http.StatusCreated, coupon)
@@ -727,6 +790,12 @@ func (h *MarketingHandlers) UpdateCoupon(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishCouponUpdated(c.Request.Context(), tenantID, coupon.ID.String(), coupon.Code, ""); err != nil {
+			h.logger.WithError(err).Error("Failed to publish coupon updated event")
+		}
+	}
+
 	c.JSON(http.StatusOK, coupon)
 }
 
@@ -744,6 +813,12 @@ func (h *MarketingHandlers) DeleteCoupon(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to delete coupon")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete coupon"})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishCouponDeleted(c.Request.Context(), tenantID, id.String(), ""); err != nil {
+			h.logger.WithError(err).Error("Failed to publish coupon deleted event")
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Coupon deleted successfully"})
@@ -838,6 +913,12 @@ func (h *MarketingHandlers) StorefrontEnrollCustomer(c *gin.Context) {
 		return
 	}
 
+	if h.publisher != nil {
+		if err := h.publisher.PublishCustomerEnrolled(c.Request.Context(), tenantID, "", "", customerID.String()); err != nil {
+			h.logger.WithError(err).Error("Failed to publish customer enrolled event")
+		}
+	}
+
 	c.JSON(http.StatusCreated, loyalty)
 }
 
@@ -925,6 +1006,12 @@ func (h *MarketingHandlers) StorefrontRedeemPoints(c *gin.Context) {
 		h.logger.WithError(err).Error("Failed to redeem points")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.PublishPointsRedeemed(c.Request.Context(), tenantID, customerID.String(), req.Points, req.Description); err != nil {
+			h.logger.WithError(err).Error("Failed to publish points redeemed event")
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Points redeemed successfully"})

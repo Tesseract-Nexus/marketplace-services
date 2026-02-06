@@ -9,6 +9,7 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"marketing-service/internal/config"
+	marketingevents "marketing-service/internal/events"
 	"marketing-service/internal/handlers"
 	"marketing-service/internal/middleware"
 	"marketing-service/internal/models"
@@ -103,8 +104,17 @@ func main() {
 	}
 	marketingService.SetEmailDefaults(fromEmail, fromName)
 
+	// Initialize NATS events publisher
+	eventsPublisher, err := marketingevents.NewPublisher(logger)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to initialize NATS events publisher - events will not be published")
+	} else {
+		logger.Info("✓ NATS events publisher initialized")
+		defer eventsPublisher.Close()
+	}
+
 	// Initialize handlers
-	marketingHandlers := handlers.NewMarketingHandlers(marketingService, logger)
+	marketingHandlers := handlers.NewMarketingHandlers(marketingService, eventsPublisher, logger)
 	mauticHandlers := handlers.NewMauticHandlers(mauticClient, marketingService, logger)
 
 	// Initialize RBAC middleware
