@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -89,7 +90,15 @@ func (h *MauticHandlers) SyncCampaign(c *gin.Context) {
 	}
 
 	// Sync to Mautic
-	result, err := h.mauticClient.SyncCampaign(c.Request.Context(), campaign, "noreply@mail.tesserix.app", "Tesseract Hub")
+	fromEmail := os.Getenv("FROM_EMAIL")
+	if fromEmail == "" {
+		fromEmail = "noreply@mail.tesserix.app"
+	}
+	fromName := os.Getenv("FROM_NAME")
+	if fromName == "" {
+		fromName = "Tesseract Hub"
+	}
+	result, err := h.mauticClient.SyncCampaign(c.Request.Context(), campaign, fromEmail, fromName)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to sync campaign to Mautic")
 		c.JSON(http.StatusInternalServerError, gin.H{

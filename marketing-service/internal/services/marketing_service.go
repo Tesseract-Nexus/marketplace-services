@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
@@ -27,12 +28,20 @@ type MarketingService struct {
 
 // NewMarketingService creates a new marketing service
 func NewMarketingService(repo *repository.MarketingRepository, mauticClient *MauticClient, logger *logrus.Logger) *MarketingService {
+	fromEmail := os.Getenv("FROM_EMAIL")
+	if fromEmail == "" {
+		fromEmail = "noreply@mail.tesserix.app"
+	}
+	fromName := os.Getenv("FROM_NAME")
+	if fromName == "" {
+		fromName = "Tesseract Hub"
+	}
 	return &MarketingService{
 		repo:         repo,
 		mauticClient: mauticClient,
 		logger:       logger,
-		fromEmail:    "noreply@mail.tesserix.app",
-		fromName:     "Tesseract Hub",
+		fromEmail:    fromEmail,
+		fromName:     fromName,
 	}
 }
 
