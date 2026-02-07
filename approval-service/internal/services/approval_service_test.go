@@ -108,6 +108,14 @@ func (m *MockApprovalRepository) FindActiveDelegations(ctx context.Context, tena
 	return args.Get(0).([]models.ApprovalDelegation), args.Error(1)
 }
 
+func (m *MockApprovalRepository) HasPendingApprovalForResource(ctx context.Context, tenantID string, resourceType string, resourceID uuid.UUID, actionType string) (bool, *models.ApprovalRequest, error) {
+	args := m.Called(ctx, tenantID, resourceType, resourceID, actionType)
+	if args.Get(1) == nil {
+		return args.Bool(0), nil, args.Error(2)
+	}
+	return args.Bool(0), args.Get(1).(*models.ApprovalRequest), args.Error(2)
+}
+
 // WithTransaction implements transaction support for the mock
 // For testing, it executes the callback with the mock itself (simulating a transaction)
 func (m *MockApprovalRepository) WithTransaction(ctx context.Context, fn func(txRepo repository.ApprovalRepositoryInterface) error) error {
