@@ -465,12 +465,22 @@ func (c *TaxCalculator) calculateCanadaTax(ctx context.Context, req models.Calcu
 func (c *TaxCalculator) calculateStandardTax(ctx context.Context, req models.CalculateTaxRequest) (*models.TaxCalculationResponse, error) {
 	subtotal := c.calculateSubtotal(req.LineItems)
 
+	// Resolve country and state codes (prefer ISO codes over full names for jurisdiction matching)
+	countryCode := req.ShippingAddress.CountryCode
+	if countryCode == "" {
+		countryCode = req.ShippingAddress.Country
+	}
+	stateCode := req.ShippingAddress.StateCode
+	if stateCode == "" {
+		stateCode = req.ShippingAddress.State
+	}
+
 	// Resolve jurisdictions from address
 	jurisdictions, err := c.repo.GetJurisdictionByLocation(
 		ctx,
 		req.TenantID,
-		req.ShippingAddress.Country,
-		req.ShippingAddress.State,
+		countryCode,
+		stateCode,
 		req.ShippingAddress.City,
 		req.ShippingAddress.Zip,
 	)
