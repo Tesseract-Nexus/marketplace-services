@@ -73,12 +73,34 @@ func CustomerAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if email != "" && tenantID != "" {
-				var customer struct{ ID string }
+				var customer struct {
+					ID       string
+					TenantID string
+				}
 				if err := db.Table("customers").
-					Select("id").
+					Select("id, tenant_id").
 					Where("tenant_id = ? AND LOWER(email) = LOWER(?)", tenantID, email).
 					First(&customer).Error; err == nil {
 					resolvedID = customer.ID
+					tenantID = customer.TenantID
+				}
+			}
+
+			// If email+tenant lookup failed (e.g. cross-tenant login where JWT tenant
+			// differs from the customer record's tenant), fall back to lookup by ID.
+			// The Keycloak sub IS the customer UUID, so we can resolve the correct tenant.
+			if resolvedID == userID {
+				var customer struct {
+					ID       string
+					TenantID string
+				}
+				if err := db.Table("customers").
+					Select("id, tenant_id").
+					Where("id = ?", userID).
+					First(&customer).Error; err == nil {
+					resolvedID = customer.ID
+					tenantID = customer.TenantID
+					log.Printf("[CustomerAuth] Internal: resolved via ID fallback → customer %s (tenant: %s)", resolvedID, tenantID)
 				}
 			}
 
@@ -86,6 +108,9 @@ func CustomerAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			c.Set("customer_email", email)
 			c.Set("keycloak_sub", userID) // Original X-User-Id for RequireSameCustomer matching
 			c.Set("is_internal_service", true)
+			if tenantID != "" {
+				c.Set("tenant_id", tenantID)
+			}
 			c.Next()
 			return
 		}
