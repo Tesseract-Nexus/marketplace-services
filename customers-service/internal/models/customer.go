@@ -65,6 +65,9 @@ type Customer struct {
 	Country     string `json:"country" gorm:"type:varchar(100)"` // Full country name (e.g., "Australia")
 	CountryCode string `json:"countryCode" gorm:"type:varchar(2);index:idx_customers_tenant_country"` // ISO 2-letter code (e.g., "AU")
 
+	// Profile
+	AvatarUrl string `json:"avatarUrl" gorm:"type:varchar(500)"` // Profile picture URL (GCS public bucket)
+
 	// Engagement
 	Tags             pq.StringArray `json:"tags" gorm:"type:text[]"`
 	Notes            string         `json:"notes" gorm:"type:text"`

@@ -199,6 +199,7 @@ type UpdateCustomerRequest struct {
 	DateOfBirth    *time.Time            `json:"dateOfBirth"`
 	Country        *string               `json:"country"`     // Full country name (e.g., "Australia")
 	CountryCode    *string               `json:"countryCode"` // ISO 2-letter code (e.g., "AU")
+	AvatarUrl      *string               `json:"avatarUrl"`   // Profile picture URL (GCS public bucket)
 	Status         *models.CustomerStatus `json:"status"`
 	CustomerType   *models.CustomerType   `json:"customerType"`
 	MarketingOptIn *bool                  `json:"marketingOptIn"`
@@ -231,6 +232,9 @@ func (s *CustomerService) UpdateCustomer(ctx context.Context, tenantID string, c
 	}
 	if req.CountryCode != nil {
 		customer.CountryCode = *req.CountryCode
+	}
+	if req.AvatarUrl != nil {
+		customer.AvatarUrl = *req.AvatarUrl
 	}
 	if req.Status != nil {
 		customer.Status = *req.Status
