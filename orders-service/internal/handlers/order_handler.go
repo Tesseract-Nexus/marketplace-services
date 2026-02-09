@@ -85,6 +85,11 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		req.StorefrontHost = storefrontHost
 	}
 
+	// Capture idempotency key for duplicate order prevention
+	if idempotencyKey := c.GetHeader("X-Idempotency-Key"); idempotencyKey != "" {
+		req.IdempotencyKey = idempotencyKey
+	}
+
 	order, err := h.orderService.CreateOrder(req, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -92,6 +97,15 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 			Message: err.Error(),
 		})
 		return
+	}
+
+	// If an idempotency key was provided and the order already existed, return 200 instead of 201
+	if req.IdempotencyKey != "" && order.IdempotencyKey != nil && *order.IdempotencyKey == req.IdempotencyKey {
+		// Check if the order was just created (within last few seconds) or pre-existing
+		if time.Since(order.CreatedAt) > 5*time.Second {
+			c.JSON(http.StatusOK, order)
+			return
+		}
 	}
 
 	c.JSON(http.StatusCreated, order)

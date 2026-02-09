@@ -43,6 +43,8 @@ type OrderRepository interface {
 	CreateSplit(split *models.OrderSplit) error
 	GetChildOrders(parentOrderID uuid.UUID, tenantID string) ([]models.Order, error)
 	BatchGetByIDs(ids []uuid.UUID, tenantID string) ([]*models.Order, error)
+	// Idempotency
+	FindByIdempotencyKey(tenantID, key string) (*models.Order, error)
 	// Health check methods for Redis
 	RedisHealth(ctx context.Context) error
 	CacheStats() *cache.CacheStats
@@ -245,6 +247,28 @@ func (r *orderRepository) GetByOrderNumber(orderNumber string, tenantID string) 
 		if marshalErr == nil {
 			r.redis.Set(ctx, "tesseract:orders:"+cacheKey, data, OrderNumberCacheTTL)
 		}
+	}
+
+	return &order, nil
+}
+
+// FindByIdempotencyKey retrieves an order by its idempotency key within a tenant
+func (r *orderRepository) FindByIdempotencyKey(tenantID, key string) (*models.Order, error) {
+	var order models.Order
+	err := r.db.Preload("Items").
+		Preload("Customer").
+		Preload("Shipping").
+		Preload("Payment").
+		Preload("Timeline").
+		Preload("Discounts").
+		Where("tenant_id = ? AND idempotency_key = ?", tenantID, key).
+		First(&order).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find order by idempotency key: %w", err)
 	}
 
 	return &order, nil

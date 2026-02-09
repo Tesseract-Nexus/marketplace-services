@@ -143,6 +143,9 @@ type Order struct {
 	IsReverseCharge bool    `json:"isReverseCharge,omitempty" gorm:"default:false"`            // EU B2B reverse charge
 	CustomerVATNumber string `json:"customerVatNumber,omitempty" gorm:"type:varchar(50)"`     // Customer's VAT number
 
+	// Idempotency key for duplicate order prevention (nullable, unique per tenant)
+	IdempotencyKey *string `json:"idempotencyKey,omitempty" gorm:"type:varchar(255);index:idx_orders_tenant_idempotency_key,unique"`
+
 	// Storefront host for building email URLs (custom domain or default subdomain)
 	StorefrontHost string `json:"storefrontHost,omitempty" gorm:"type:varchar(255)"`
 

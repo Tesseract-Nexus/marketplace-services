@@ -48,6 +48,7 @@ type CreateOrderRequest struct {
 	Discounts  []CreateOrderDiscountRequest `json:"discounts"`
 	Notes          string                       `json:"notes"`
 	StorefrontHost string                       `json:"storefrontHost,omitempty"` // Set from X-Storefront-Host header
+	IdempotencyKey string                       `json:"-"`                        // Set from X-Idempotency-Key header
 }
 
 type CreateOrderItemRequest struct {
@@ -190,6 +191,17 @@ func NewOrderService(orderRepo repository.OrderRepository, returnRepo *repositor
 
 // CreateOrder creates a new order with all related entities
 func (s *orderService) CreateOrder(req CreateOrderRequest, tenantID string) (*models.Order, error) {
+	// Idempotency check: if a key is provided, check for an existing order
+	if req.IdempotencyKey != "" {
+		existing, err := s.orderRepo.FindByIdempotencyKey(tenantID, req.IdempotencyKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check idempotency key: %w", err)
+		}
+		if existing != nil {
+			return existing, nil
+		}
+	}
+
 	// Step 1: Check stock availability for all items
 	stockCheckItems := make([]clients.StockCheckItem, len(req.Items))
 	for i, item := range req.Items {
@@ -288,6 +300,11 @@ func (s *orderService) CreateOrder(req CreateOrderRequest, tenantID string) (*mo
 		VATAmount:         vatAmount,
 		IsReverseCharge:   isReverseCharge,
 		StorefrontHost:    req.StorefrontHost,
+	}
+
+	// Set idempotency key if provided
+	if req.IdempotencyKey != "" {
+		order.IdempotencyKey = &req.IdempotencyKey
 	}
 
 	// Create order items
