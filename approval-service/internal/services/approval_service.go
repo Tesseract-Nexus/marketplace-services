@@ -905,6 +905,7 @@ func (s *ApprovalService) publishApprovalEvent(ctx context.Context, eventType st
 	}
 
 	event := events.NewApprovalEvent(eventType, request.TenantID)
+	event.SourceID = uuid.New().String()
 	event.ApprovalRequestID = request.ID.String()
 	event.WorkflowID = request.WorkflowID.String()
 	event.RequesterID = request.RequesterID.String()
