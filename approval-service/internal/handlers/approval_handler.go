@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	gosharedmw "github.com/Tesseract-Nexus/go-shared/middleware"
 	"approval-service/internal/events"
-	"approval-service/internal/models"
 	"approval-service/internal/services"
 )
 
