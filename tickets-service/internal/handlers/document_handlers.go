@@ -174,9 +174,11 @@ func (h *DocumentHandler) UploadTicketAttachment(c *gin.Context) {
 		}
 	}
 
+	// Extract base media type (strip parameters like charset)
+	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
 	isValidFileType := false
 	for _, allowedType := range allowedTypes {
-		if strings.Contains(contentType, allowedType) {
+		if mediaType == allowedType {
 			isValidFileType = true
 			break
 		}

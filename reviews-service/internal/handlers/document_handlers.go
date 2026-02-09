@@ -166,9 +166,11 @@ func (h *DocumentHandler) UploadReviewMedia(c *gin.Context) {
 		allowedTypes = []string{"application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 	}
 
+	// Extract base media type (strip parameters like charset)
+	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
 	isValidFileType := false
 	for _, allowedType := range allowedTypes {
-		if strings.Contains(contentType, allowedType) {
+		if mediaType == allowedType {
 			isValidFileType = true
 			break
 		}

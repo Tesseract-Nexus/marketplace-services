@@ -124,14 +124,19 @@ func (h *DocumentHandler) UploadProductImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Validate image file type
+	// Validate image file type using exact MIME matching
 	contentType := header.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "image/") {
+	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
+	allowedImageTypes := map[string]bool{
+		"image/jpeg": true, "image/jpg": true, "image/png": true,
+		"image/gif": true, "image/webp": true,
+	}
+	if !allowedImageTypes[mediaType] {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Success: false,
 			Error: models.Error{
 				Code:    "INVALID_FILE_TYPE",
-				Message: "Only image files are allowed",
+				Message: "Only image files are allowed (JPEG, PNG, GIF, WebP)",
 			},
 		})
 		return
