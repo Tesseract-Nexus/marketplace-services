@@ -101,11 +101,6 @@ func (h *ApprovalHandler) CreateRequest(c *gin.Context) {
 		return
 	}
 
-	// Publish approval requested event
-	if h.eventsPublisher != nil {
-		_ = h.eventsPublisher.PublishApprovalRequested(c.Request.Context(), request, tenantID)
-	}
-
 	// Return wrapped response for service-to-service compatibility
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -259,8 +254,6 @@ func (h *ApprovalHandler) ApproveRequest(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&body)
 
-	tenantID := c.GetString("tenant_id")
-
 	request, err := h.service.ApproveRequest(c.Request.Context(), id, userID, userRole, actor.ActorName, actor.ActorEmail, body.Comment)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -276,19 +269,6 @@ func (h *ApprovalHandler) ApproveRequest(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
-	}
-
-	// Publish approval granted event
-	if h.eventsPublisher != nil {
-		// Find the latest decision (the approval we just made)
-		var latestDecision *models.ApprovalDecision
-		for i := len(request.Decisions) - 1; i >= 0; i-- {
-			if request.Decisions[i].Decision == "approved" {
-				latestDecision = &request.Decisions[i]
-				break
-			}
-		}
-		_ = h.eventsPublisher.PublishApprovalGranted(c.Request.Context(), request, latestDecision, tenantID)
 	}
 
 	c.JSON(http.StatusOK, request)
@@ -387,8 +367,6 @@ func (h *ApprovalHandler) RejectRequest(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetString("tenant_id")
-
 	request, err := h.service.RejectRequest(c.Request.Context(), id, userID, userRole, actor.ActorName, actor.ActorEmail, body.Comment)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -402,19 +380,6 @@ func (h *ApprovalHandler) RejectRequest(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
-	}
-
-	// Publish approval rejected event
-	if h.eventsPublisher != nil {
-		// Find the latest decision (the rejection we just made)
-		var latestDecision *models.ApprovalDecision
-		for i := len(request.Decisions) - 1; i >= 0; i-- {
-			if request.Decisions[i].Decision == "rejected" {
-				latestDecision = &request.Decisions[i]
-				break
-			}
-		}
-		_ = h.eventsPublisher.PublishApprovalRejected(c.Request.Context(), request, latestDecision, tenantID)
 	}
 
 	c.JSON(http.StatusOK, request)
@@ -497,8 +462,6 @@ func (h *ApprovalHandler) CancelRequest(c *gin.Context) {
 		return
 	}
 
-	tenantID := c.GetString("tenant_id")
-
 	request, err := h.service.CancelRequest(c.Request.Context(), id, userID, actor.ActorName, actor.ActorEmail)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -507,11 +470,6 @@ func (h *ApprovalHandler) CancelRequest(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
-	}
-
-	// Publish approval cancelled event
-	if h.eventsPublisher != nil {
-		_ = h.eventsPublisher.PublishApprovalCancelled(c.Request.Context(), request, tenantID)
 	}
 
 	c.JSON(http.StatusOK, request)

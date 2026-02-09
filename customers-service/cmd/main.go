@@ -105,6 +105,7 @@ func main() {
 	if err != nil {
 		log.Printf("WARNING: Failed to initialize events publisher: %v (NATS events disabled)", err)
 	} else {
+		defer eventsPublisher.Close()
 		log.Println("✓ Events publisher initialized (NATS connected)")
 	}
 
