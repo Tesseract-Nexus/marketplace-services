@@ -254,6 +254,22 @@ func (s *OrderImportService) ImportOrder(ctx context.Context, tenantID, vendorID
 
 		encrypted, err := s.piiEncryptor.EncryptPII(ctx, tenantID, pii)
 		if err != nil {
+			// Log encryption failure
+			if s.auditService != nil {
+				auditLog := models.NewAuditLog(tenantID, models.ActionOrderImport, models.ResourceOrder).
+					WithActor(models.ActorSystem, "order-import", nil).
+					WithResource(order.ID.String()).
+					WithMetadata(models.JSONB{
+						"operation":    "ENCRYPT",
+						"success":      false,
+						"error":        err.Error(),
+						"customer_id":  ext.Customer.ID,
+						"algorithm":    "AES-256-GCM",
+					}).
+					WithPIIAccess([]string{"email", "phone", "name", "address"}).
+					Build()
+				_ = s.auditService.LogAction(ctx, auditLog)
+			}
 			return nil, fmt.Errorf("failed to encrypt customer PII: %w", err)
 		}
 
@@ -271,10 +287,23 @@ func (s *OrderImportService) ImportOrder(ctx context.Context, tenantID, vendorID
 		order.CustomerPIINonce = nonce
 		order.CustomerPIIKeyVersion = encrypted.KeyVersion
 
-		// Log PII access for audit
+		// Log PII encryption success + PII access for audit
 		if s.auditService != nil {
+			customerID := ""
+			if ext.Customer != nil {
+				customerID = ext.Customer.ID
+			}
 			auditLog := models.NewAuditLog(tenantID, models.ActionOrderImport, models.ResourceOrder).
+				WithActor(models.ActorSystem, "order-import", nil).
 				WithResource(order.ID.String()).
+				WithMetadata(models.JSONB{
+					"operation":     "ENCRYPT",
+					"success":       true,
+					"customer_id":   customerID,
+					"algorithm":     "AES-256-GCM",
+					"key_version":   encrypted.KeyVersion,
+					"fields_count":  len([]string{"email", "phone", "name", "address"}),
+				}).
 				WithPIIAccess([]string{"email", "phone", "name", "address"}).
 				Build()
 			_ = s.auditService.LogAction(ctx, auditLog)
@@ -394,7 +423,35 @@ func (s *OrderImportService) GetOrder(ctx context.Context, tenantID string, orde
 
 		decrypted, err := s.piiEncryptor.DecryptPII(ctx, tenantID, encrypted)
 		if err != nil {
+			// Log decryption failure
+			if s.auditService != nil {
+				failLog := models.NewAuditLog(tenantID, models.ActionPIIAccess, models.ResourceOrder).
+					WithActor(models.ActorUser, actorID, nil).
+					WithResource(orderID.String()).
+					WithMetadata(models.JSONB{
+						"operation":   "DECRYPT",
+						"success":     false,
+						"error":       err.Error(),
+						"key_version": order.CustomerPIIKeyVersion,
+					}).
+					Build()
+				_ = s.auditService.LogAction(ctx, failLog)
+			}
 			return &order, nil, fmt.Errorf("failed to decrypt PII: %w", err)
+		}
+
+		// Log decryption success
+		if s.auditService != nil {
+			decryptLog := models.NewAuditLog(tenantID, models.ActionPIIAccess, models.ResourceOrder).
+				WithActor(models.ActorUser, actorID, nil).
+				WithResource(orderID.String()).
+				WithMetadata(models.JSONB{
+					"operation":   "DECRYPT",
+					"success":     true,
+					"key_version": order.CustomerPIIKeyVersion,
+				}).
+				Build()
+			_ = s.auditService.LogAction(ctx, decryptLog)
 		}
 
 		pii = &CustomerPII{}

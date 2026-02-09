@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Tesseract-Nexus/go-shared/security"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"orders-service/internal/clients"
@@ -147,8 +148,8 @@ func (h *ApprovalAwareHandler) RefundOrderWithApproval(c *gin.Context) {
 		Reason:          req.Reason,
 		Metadata: map[string]interface{}{
 			"order_total":     order.Total,
-			"customer_email":  order.Customer.Email,
-			"customer_name":   fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName),
+			"customer_email":  security.MaskEmail(order.Customer.Email),
+			"customer_name":   security.MaskName(fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName)),
 			"refund_type":     getRefundType(refundAmount, order.Total),
 		},
 		RequiredPriority: h.thresholds.RequiredPriorityForRefund,
@@ -289,7 +290,7 @@ func (h *ApprovalAwareHandler) CancelOrderWithApproval(c *gin.Context) {
 			"fulfillment_status": string(order.FulfillmentStatus),
 			"is_shipped":         isShipped,
 			"hours_since_order":  time.Since(order.CreatedAt).Hours(),
-			"customer_email":     order.Customer.Email,
+			"customer_email":     security.MaskEmail(order.Customer.Email),
 		},
 		RequiredPriority: h.thresholds.RequiredPriorityForCancel,
 		ExpiresInHours:   &expiresInHours,

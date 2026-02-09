@@ -240,6 +240,24 @@ func (s *AuditService) LogPIIAccess(ctx context.Context, tenantID, actorID strin
 	return s.LogAction(ctx, log)
 }
 
+// LogDataExport logs a data export operation for compliance tracking.
+// Callers should invoke this whenever data is exported (CSV, API bulk fetch, etc).
+func (s *AuditService) LogDataExport(ctx context.Context, tenantID, actorID string, resourceType models.ResourceType, resourceID string, exportFormat string, recordCount int, piiFields []string) error {
+	builder := models.NewAuditLog(tenantID, models.ActionDataExport, resourceType).
+		WithActor(models.ActorUser, actorID, nil).
+		WithResource(resourceID).
+		WithMetadata(models.JSONB{
+			"export_format": exportFormat,
+			"record_count":  recordCount,
+		})
+
+	if len(piiFields) > 0 {
+		builder = builder.WithPIIAccess(piiFields)
+	}
+
+	return s.LogAction(ctx, builder.Build())
+}
+
 // GetAuditLogs retrieves audit logs for a tenant with filters
 func (s *AuditService) GetAuditLogs(ctx context.Context, tenantID string, opts *AuditLogOptions) ([]models.AuditLog, int64, error) {
 	var logs []models.AuditLog

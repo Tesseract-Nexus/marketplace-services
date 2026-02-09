@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/Tesseract-Nexus/go-shared/events"
+	"github.com/Tesseract-Nexus/go-shared/security"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
-	"github.com/Tesseract-Nexus/go-shared/events"
 	"orders-service/internal/models"
 )
 
@@ -128,8 +129,8 @@ func (p *Publisher) PublishPaymentReceived(ctx context.Context, order *models.Or
 	event.PaymentID = transactionID
 
 	if order.Customer != nil {
-		event.CustomerEmail = order.Customer.Email
-		event.CustomerName = fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName)
+		event.CustomerEmail = security.MaskEmail(order.Customer.Email)
+		event.CustomerName = security.MaskName(fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName))
 		event.CustomerID = order.CustomerID.String()
 	}
 
@@ -158,11 +159,11 @@ func (p *Publisher) buildOrderEvent(eventType string, order *models.Order, tenan
 	event.Currency = order.Currency
 	event.CustomerID = order.CustomerID.String()
 
-	// Customer info
+	// Customer info (masked for PII protection)
 	if order.Customer != nil {
-		event.CustomerEmail = order.Customer.Email
-		event.CustomerName = fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName)
-		event.CustomerPhone = order.Customer.Phone
+		event.CustomerEmail = security.MaskEmail(order.Customer.Email)
+		event.CustomerName = security.MaskName(fmt.Sprintf("%s %s", order.Customer.FirstName, order.Customer.LastName))
+		event.CustomerPhone = security.MaskPhone(order.Customer.Phone)
 	}
 
 	// Order items

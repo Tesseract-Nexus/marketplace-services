@@ -168,36 +168,53 @@ func splitPath(path string) []string {
 	return parts
 }
 
-// extractPaymentMetadata extracts relevant metadata from request
+// paymentAllowedFields defines the whitelist of fields safe to include in audit metadata.
+// Only these fields pass through — everything else (card numbers, CVVs, secrets) is dropped.
+var paymentAllowedFields = map[string]bool{
+	"amount":        true,
+	"currency":      true,
+	"gatewayType":   true,
+	"orderId":       true,
+	"method":        true,
+	"status":        true,
+	"reason":        true,
+	"paymentId":     true,
+	"provider":      true,
+	"isTestMode":    true,
+	"displayOrder":  true,
+	"isEnabled":     true,
+	"gateway_type":  true,
+	"order_id":      true,
+	"payment_id":    true,
+	"is_test_mode":  true,
+	"display_order": true,
+	"is_enabled":    true,
+}
+
+// whitelistPaymentBody returns only allowed fields from a parsed request body.
+func whitelistPaymentBody(body map[string]interface{}) map[string]string {
+	safe := make(map[string]string)
+	for k, v := range body {
+		if paymentAllowedFields[k] {
+			safe[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return safe
+}
+
+// extractPaymentMetadata extracts relevant metadata from request using a whitelist approach.
+// Only explicitly safe fields are included; all others are silently dropped.
 func extractPaymentMetadata(c *gin.Context, body []byte) map[string]string {
 	metadata := make(map[string]string)
 
-	// For payment creation, extract amount and currency
-	if c.Request.URL.Path == "/api/v1/payments/create-intent" && len(body) > 0 {
-		var req struct {
-			Amount      float64 `json:"amount"`
-			Currency    string  `json:"currency"`
-			GatewayType string  `json:"gatewayType"`
-			OrderID     string  `json:"orderId"`
-		}
-		if json.Unmarshal(body, &req) == nil {
-			metadata["amount"] = formatAmount(req.Amount)
-			metadata["currency"] = req.Currency
-			metadata["gateway"] = req.GatewayType
-			metadata["order_id"] = req.OrderID
-		}
+	if len(body) == 0 {
+		return metadata
 	}
 
-	// For refunds, extract amount
-	if matchPath(c.Request.URL.Path, "/api/v1/payments/*/refund") && len(body) > 0 {
-		var req struct {
-			Amount float64 `json:"amount"`
-			Reason string  `json:"reason"`
-		}
-		if json.Unmarshal(body, &req) == nil {
-			metadata["refund_amount"] = formatAmount(req.Amount)
-			metadata["reason"] = req.Reason
-		}
+	// Parse the full body and whitelist
+	var bodyJSON map[string]interface{}
+	if json.Unmarshal(body, &bodyJSON) == nil {
+		metadata = whitelistPaymentBody(bodyJSON)
 	}
 
 	return metadata
@@ -207,7 +224,8 @@ func formatAmount(amount float64) string {
 	return fmt.Sprintf("%.2f", amount)
 }
 
-// SensitiveFields are fields that should be masked in logs
+// SensitiveFields are fields that should never appear in logs (kept for reference).
+// Deprecated: Use paymentAllowedFields whitelist instead of this blacklist.
 var SensitiveFields = []string{
 	"api_key",
 	"api_secret",
@@ -220,7 +238,8 @@ var SensitiveFields = []string{
 	"expiry",
 }
 
-// MaskSensitiveData masks sensitive fields in a map
+// MaskSensitiveData masks sensitive fields in a map.
+// Deprecated: Use whitelistPaymentBody instead — whitelist approach is safer than blacklist.
 func MaskSensitiveData(data map[string]interface{}) map[string]interface{} {
 	masked := make(map[string]interface{})
 	for k, v := range data {

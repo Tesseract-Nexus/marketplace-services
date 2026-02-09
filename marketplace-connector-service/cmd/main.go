@@ -81,9 +81,10 @@ func main() {
 	catalogHandler := handlers.NewCatalogHandler(catalogService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyService)
+	auditHandler := handlers.NewAuditHandler(auditService)
 
 	// Setup router
-	router := setupRouter(cfg, db, healthHandler, connectionHandler, syncHandler, webhookHandler, catalogHandler, inventoryHandler, apiKeyHandler)
+	router := setupRouter(cfg, db, healthHandler, connectionHandler, syncHandler, webhookHandler, catalogHandler, inventoryHandler, apiKeyHandler, auditHandler)
 
 	// Start server
 	log.Printf("Marketplace Connector Service starting on port %s (env: %s)", cfg.Port, cfg.Environment)
@@ -103,6 +104,7 @@ func setupRouter(
 	catalogHandler *handlers.CatalogHandler,
 	inventoryHandler *handlers.InventoryHandler,
 	apiKeyHandler *handlers.APIKeyHandler,
+	auditHandler *handlers.AuditHandler,
 ) *gin.Engine {
 	router := gin.Default()
 
@@ -233,6 +235,13 @@ func setupRouter(
 			apiKeys.POST("/:id/rotate", apiKeyHandler.RotateAPIKey)
 			apiKeys.POST("/:id/revoke", apiKeyHandler.RevokeAPIKey)
 			apiKeys.DELETE("/:id", apiKeyHandler.DeleteAPIKey)
+		}
+
+		// Audit Logs (compliance query endpoints)
+		auditLogs := v1.Group("/audit-logs")
+		{
+			auditLogs.GET("", auditHandler.GetAuditLogs)
+			auditLogs.GET("/pii-access", auditHandler.GetPIIAccessLogs)
 		}
 
 		// API Key Validation (public endpoint for testing)
