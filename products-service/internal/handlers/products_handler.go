@@ -202,6 +202,45 @@ func (h *ProductsHandler) CreateProduct(c *gin.Context) {
 		product.Videos = &videosArray
 	}
 
+	// Set SEO fields — use provided values, or auto-generate from product data
+	if req.SeoTitle != nil && *req.SeoTitle != "" {
+		product.SeoTitle = req.SeoTitle
+	} else {
+		// Auto-generate: "Product Name | Brand" or just "Product Name"
+		autoTitle := req.Name
+		if len(autoTitle) > 60 {
+			autoTitle = autoTitle[:57] + "..."
+		}
+		product.SeoTitle = &autoTitle
+	}
+	if req.SeoDescription != nil && *req.SeoDescription != "" {
+		product.SeoDescription = req.SeoDescription
+	} else if req.Description != nil && *req.Description != "" {
+		// Auto-generate from product description, truncated to 160 chars
+		desc := *req.Description
+		if len(desc) > 160 {
+			desc = desc[:157] + "..."
+		}
+		product.SeoDescription = &desc
+	}
+	if len(req.SeoKeywords) > 0 {
+		keywords := make(models.JSONArray, len(req.SeoKeywords))
+		for i, kw := range req.SeoKeywords {
+			keywords[i] = kw
+		}
+		product.SeoKeywords = &keywords
+	} else if len(req.Tags) > 0 {
+		// Auto-generate keywords from tags
+		keywords := make(models.JSONArray, len(req.Tags))
+		for i, tag := range req.Tags {
+			keywords[i] = tag
+		}
+		product.SeoKeywords = &keywords
+	}
+	if req.OgImage != nil {
+		product.OgImage = req.OgImage
+	}
+
 	if err := h.repo.CreateProduct(tenantID.(string), product); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
@@ -669,6 +708,24 @@ func (h *ProductsHandler) UpdateProduct(c *gin.Context) {
 		updates.Videos = &videosArray
 	}
 
+	// Set SEO fields
+	if req.SeoTitle != nil {
+		updates.SeoTitle = req.SeoTitle
+	}
+	if req.SeoDescription != nil {
+		updates.SeoDescription = req.SeoDescription
+	}
+	if len(req.SeoKeywords) > 0 {
+		keywords := make(models.JSONArray, len(req.SeoKeywords))
+		for i, kw := range req.SeoKeywords {
+			keywords[i] = kw
+		}
+		updates.SeoKeywords = &keywords
+	}
+	if req.OgImage != nil {
+		updates.OgImage = req.OgImage
+	}
+
 	if err := h.repo.UpdateProduct(tenantID.(string), productID, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
@@ -1067,6 +1124,42 @@ func (h *ProductsHandler) BulkCreateProducts(c *gin.Context) {
 				imagesArray[j] = img
 			}
 			product.Images = &imagesArray
+		}
+
+		// Set SEO fields — use provided values, or auto-generate from product data
+		if item.SeoTitle != nil && *item.SeoTitle != "" {
+			product.SeoTitle = item.SeoTitle
+		} else {
+			autoTitle := item.Name
+			if len(autoTitle) > 60 {
+				autoTitle = autoTitle[:57] + "..."
+			}
+			product.SeoTitle = &autoTitle
+		}
+		if item.SeoDescription != nil && *item.SeoDescription != "" {
+			product.SeoDescription = item.SeoDescription
+		} else if item.Description != nil && *item.Description != "" {
+			desc := *item.Description
+			if len(desc) > 160 {
+				desc = desc[:157] + "..."
+			}
+			product.SeoDescription = &desc
+		}
+		if len(item.SeoKeywords) > 0 {
+			keywords := make(models.JSONArray, len(item.SeoKeywords))
+			for j, kw := range item.SeoKeywords {
+				keywords[j] = kw
+			}
+			product.SeoKeywords = &keywords
+		} else if len(item.Tags) > 0 {
+			keywords := make(models.JSONArray, len(item.Tags))
+			for j, tag := range item.Tags {
+				keywords[j] = tag
+			}
+			product.SeoKeywords = &keywords
+		}
+		if item.OgImage != nil {
+			product.OgImage = item.OgImage
 		}
 
 		products[i] = product
@@ -1913,6 +2006,21 @@ func (h *ProductsHandler) CreateCategory(c *gin.Context) {
 		UpdatedByID: userIDStr,
 	}
 
+	// Set SEO fields
+	if req.SeoTitle != nil {
+		category.SeoTitle = req.SeoTitle
+	}
+	if req.SeoDescription != nil {
+		category.SeoDescription = req.SeoDescription
+	}
+	if len(req.SeoKeywords) > 0 {
+		keywords := make(models.JSONArray, len(req.SeoKeywords))
+		for i, kw := range req.SeoKeywords {
+			keywords[i] = kw
+		}
+		category.SeoKeywords = &keywords
+	}
+
 	if err := h.repo.CreateCategory(tenantID.(string), category); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Success: false,
@@ -2091,6 +2199,21 @@ func (h *ProductsHandler) UpdateCategory(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		updates.IsActive = req.IsActive
+	}
+
+	// Set SEO fields
+	if req.SeoTitle != nil {
+		updates.SeoTitle = req.SeoTitle
+	}
+	if req.SeoDescription != nil {
+		updates.SeoDescription = req.SeoDescription
+	}
+	if len(req.SeoKeywords) > 0 {
+		keywords := make(models.JSONArray, len(req.SeoKeywords))
+		for i, kw := range req.SeoKeywords {
+			keywords[i] = kw
+		}
+		updates.SeoKeywords = &keywords
 	}
 
 	if err := h.repo.UpdateCategory(tenantID.(string), categoryID, updates); err != nil {

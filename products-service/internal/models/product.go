@@ -234,6 +234,11 @@ type Product struct {
 	// Denormalized names for display (updated on create/update)
 	WarehouseName *string `json:"warehouseName,omitempty" gorm:"index"`
 	SupplierName  *string `json:"supplierName,omitempty" gorm:"index"`
+	// SEO metadata
+	SeoTitle       *string    `json:"seoTitle,omitempty" gorm:"column:seo_title;type:text"`
+	SeoDescription *string    `json:"seoDescription,omitempty" gorm:"column:seo_description;type:text"`
+	SeoKeywords    *JSONArray `json:"seoKeywords,omitempty" gorm:"column:seo_keywords;type:jsonb"`
+	OgImage        *string    `json:"ogImage,omitempty" gorm:"column:og_image;type:text"`
 }
 
 // ProductVariant represents a product variant
@@ -276,6 +281,10 @@ type Category struct {
 	Position    int             `json:"position" gorm:"not null;default:1"`
 	IsActive    *bool           `json:"isActive" gorm:"column:is_active;default:true"`
 	Status      string          `json:"status" gorm:"not null;default:'ACTIVE'"`
+	// SEO metadata
+	SeoTitle       *string    `json:"seoTitle,omitempty" gorm:"column:seo_title;type:text"`
+	SeoDescription *string    `json:"seoDescription,omitempty" gorm:"column:seo_description;type:text"`
+	SeoKeywords    *JSONArray `json:"seoKeywords,omitempty" gorm:"column:seo_keywords;type:jsonb"`
 	CreatedAt   time.Time       `json:"createdAt" gorm:"column:created_at"`
 	UpdatedAt   time.Time       `json:"updatedAt" gorm:"column:updated_at"`
 	DeletedAt   *gorm.DeletedAt `json:"deletedAt,omitempty" gorm:"column:deleted_at;index"`
@@ -324,6 +333,11 @@ type CreateProductRequest struct {
 	LogoURL           *string            `json:"logoUrl,omitempty"`   // Product logo (512x512 max)
 	BannerURL         *string            `json:"bannerUrl,omitempty"` // Product banner (1920x480)
 	Videos            []ProductVideo     `json:"videos,omitempty"`    // Promotional videos (max 2)
+	// SEO metadata
+	SeoTitle       *string  `json:"seoTitle,omitempty"`
+	SeoDescription *string  `json:"seoDescription,omitempty"`
+	SeoKeywords    []string `json:"seoKeywords,omitempty"`
+	OgImage        *string  `json:"ogImage,omitempty"`
 }
 
 // UpdateProductRequest represents a request to update a product
@@ -358,6 +372,11 @@ type UpdateProductRequest struct {
 	LogoURL           *string            `json:"logoUrl,omitempty"`   // Product logo (512x512 max)
 	BannerURL         *string            `json:"bannerUrl,omitempty"` // Product banner (1920x480)
 	Videos            []ProductVideo     `json:"videos,omitempty"`    // Promotional videos (max 2)
+	// SEO metadata
+	SeoTitle       *string  `json:"seoTitle,omitempty"`
+	SeoDescription *string  `json:"seoDescription,omitempty"`
+	SeoKeywords    []string `json:"seoKeywords,omitempty"`
+	OgImage        *string  `json:"ogImage,omitempty"`
 }
 
 // UpdateProductStatusRequest represents a request to update product status
@@ -524,6 +543,11 @@ type BulkCreateProductItem struct {
 	CurrencyCode      *string            `json:"currencyCode,omitempty"`
 	Attributes        []ProductAttribute `json:"attributes,omitempty"`
 	Images            []ProductImage     `json:"images,omitempty"`
+	// SEO metadata
+	SeoTitle       *string  `json:"seoTitle,omitempty"`
+	SeoDescription *string  `json:"seoDescription,omitempty"`
+	SeoKeywords    []string `json:"seoKeywords,omitempty"`
+	OgImage        *string  `json:"ogImage,omitempty"`
 	// ExternalID allows client to track items in response
 	ExternalID *string `json:"externalId,omitempty"`
 }
@@ -582,6 +606,10 @@ type CreateCategoryRequest struct {
 	ImageURL    *string `json:"imageUrl,omitempty"`  // Category icon/thumbnail
 	BannerURL   *string `json:"bannerUrl,omitempty"` // Category banner for storefront
 	SortOrder   *int    `json:"sortOrder,omitempty"`
+	// SEO metadata
+	SeoTitle       *string  `json:"seoTitle,omitempty"`
+	SeoDescription *string  `json:"seoDescription,omitempty"`
+	SeoKeywords    []string `json:"seoKeywords,omitempty"`
 }
 
 // UpdateCategoryRequest represents a request to update a category
@@ -594,6 +622,10 @@ type UpdateCategoryRequest struct {
 	BannerURL   *string `json:"bannerUrl,omitempty"` // Category banner for storefront
 	IsActive    *bool   `json:"isActive,omitempty"`
 	SortOrder   *int    `json:"sortOrder,omitempty"`
+	// SEO metadata
+	SeoTitle       *string  `json:"seoTitle,omitempty"`
+	SeoDescription *string  `json:"seoDescription,omitempty"`
+	SeoKeywords    []string `json:"seoKeywords,omitempty"`
 }
 
 // Response types
