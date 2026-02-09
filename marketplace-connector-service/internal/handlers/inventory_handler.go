@@ -111,6 +111,12 @@ func (h *InventoryHandler) ListInventoryByVendor(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	inventories, total, err := h.inventoryService.ListInventoryByVendor(c.Request.Context(), tenantID, vendorID, limit, offset)
 	if err != nil {
@@ -278,6 +284,12 @@ func (h *InventoryHandler) GetLedger(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	entries, total, err := h.inventoryService.GetLedgerEntries(c.Request.Context(), tenantID, id, limit, offset)
 	if err != nil {
@@ -323,6 +335,12 @@ func (h *InventoryHandler) GetLedgerByDateRange(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	entries, total, err := h.inventoryService.GetLedgerEntriesByDateRange(c.Request.Context(), tenantID, startDate, endDate, limit, offset)
 	if err != nil {

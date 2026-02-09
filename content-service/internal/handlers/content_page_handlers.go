@@ -3,7 +3,6 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -570,6 +569,9 @@ func (h *ContentPageHandler) GetFooterPages(c *gin.Context) {
 func (h *ContentPageHandler) GetFeaturedPages(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
 
 	pages, err := h.repo.GetFeaturedPages(tenantID.(string), limit)
 	if err != nil {

@@ -78,6 +78,12 @@ func (h *CatalogHandler) ListItems(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	items, total, err := h.catalogService.ListCatalogItems(c.Request.Context(), tenantID, limit, offset)
 	if err != nil {
@@ -329,6 +335,12 @@ func (h *CatalogHandler) ListOffers(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	offers, total, err := h.catalogService.ListOffersByVendor(c.Request.Context(), tenantID, vendorID, limit, offset)
 	if err != nil {

@@ -157,8 +157,8 @@ func (h *TicketsHandler) GetTickets(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if limit > 100 {
-		limit = 100
+	if limit < 1 || limit > 100 {
+		limit = 20
 	}
 
 	// Build filters

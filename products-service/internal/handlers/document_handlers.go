@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -268,7 +269,11 @@ func (h *DocumentHandler) GetProductImages(c *gin.Context) {
 
 	bucket := c.DefaultQuery("bucket", "product-images")
 	imageType := c.Query("image_type")
-	limit := c.DefaultQuery("limit", "50")
+	limitInt, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	if limitInt < 1 || limitInt > 100 {
+		limitInt = 50
+	}
+	limit := strconv.Itoa(limitInt)
 
 	// Build query parameters
 	tags := fmt.Sprintf("product_id:%s,tenant_id:%s", productID, tenantID)

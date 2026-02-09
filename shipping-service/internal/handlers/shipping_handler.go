@@ -103,6 +103,12 @@ func (h *ShippingHandler) ListShipments(c *gin.Context) {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	shipments, total, err := h.shippingService.ListShipments(tenantID, limit, offset)
 	if err != nil {

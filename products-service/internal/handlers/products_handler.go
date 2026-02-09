@@ -2268,6 +2268,9 @@ func (h *ProductsHandler) GetSearchSuggestions(c *gin.Context) {
 	}
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
 
 	suggestions, err := h.repo.GetSearchSuggestions(tenantID.(string), query, limit)
 	if err != nil {
