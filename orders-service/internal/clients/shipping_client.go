@@ -29,7 +29,7 @@ type shippingClient struct {
 func NewShippingClient() ShippingClient {
 	baseURL := os.Getenv("SHIPPING_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://shipping-service.devtest.svc.cluster.local:8080"
+		baseURL = "http://shipping-service.marketplace.svc.cluster.local:8080"
 	}
 	// Remove /api/v1 suffix if present - shipping service routes are at /api/*
 	if len(baseURL) > 7 && baseURL[len(baseURL)-7:] == "/api/v1" {

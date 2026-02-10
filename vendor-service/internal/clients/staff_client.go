@@ -40,7 +40,7 @@ type errorResponse struct {
 func NewStaffClient() *StaffClient {
 	baseURL := os.Getenv("STAFF_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://staff-service.devtest.svc.cluster.local:8080"
+		baseURL = "http://staff-service.marketplace.svc.cluster.local:8080"
 	}
 
 	return &StaffClient{

@@ -70,7 +70,7 @@ type BatchProductsResponse struct {
 func NewProductsClient() *ProductsClient {
 	baseURL := os.Getenv("PRODUCTS_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://products-service.devtest.svc.cluster.local:8083"
+		baseURL = "http://products-service.marketplace.svc.cluster.local:8080"
 	}
 
 	// Create optimized transport with connection pooling

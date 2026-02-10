@@ -38,7 +38,7 @@ type VerificationEvent struct {
 func NewVerificationEventSubscriber(customerService *services.CustomerService) (*VerificationEventSubscriber, error) {
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL == "" {
-		natsURL = "nats://nats.devtest.svc.cluster.local:4222"
+		natsURL = "nats://nats.nats.svc.cluster.local:4222"
 	}
 
 	nc, err := nats.Connect(natsURL,
