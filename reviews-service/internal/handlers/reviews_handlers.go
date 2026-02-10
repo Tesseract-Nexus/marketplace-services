@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -20,6 +21,36 @@ type ReviewsHandler struct {
 	notificationClient *clients.NotificationClient
 	tenantClient       *clients.TenantClient
 	eventsPublisher    *events.Publisher
+}
+
+// extractAverageRating computes an average rating (1-5) from multi-aspect JSONB ratings.
+// Returns 0 if no ratings are available.
+func extractAverageRating(ratings *models.JSON) int {
+	if ratings == nil {
+		return 0
+	}
+	var totalScore float64
+	var count int
+	for _, v := range *ratings {
+		if aspect, ok := v.(map[string]interface{}); ok {
+			if score, ok := aspect["score"].(float64); ok {
+				totalScore += score
+				count++
+			}
+		}
+	}
+	if count == 0 {
+		return 0
+	}
+	avg := totalScore / float64(count)
+	rounded := int(math.Round(avg))
+	if rounded < 1 {
+		rounded = 1
+	}
+	if rounded > 5 {
+		rounded = 5
+	}
+	return rounded
 }
 
 func NewReviewsHandler(repo *repository.ReviewsRepository, notificationClient *clients.NotificationClient, tenantClient *clients.TenantClient, eventsPublisher *events.Publisher) *ReviewsHandler {
@@ -141,6 +172,8 @@ func (h *ReviewsHandler) CreateReview(c *gin.Context) {
 			customerName := c.GetString("userName")
 			productName := req.TargetType // Could be enhanced to fetch actual product name
 
+			avgRating := extractAverageRating(review.Ratings)
+
 			notification := &clients.ReviewNotification{
 				TenantID:      tenantID,
 				ReviewID:      review.ID.String(),
@@ -148,7 +181,7 @@ func (h *ReviewsHandler) CreateReview(c *gin.Context) {
 				ProductName:   productName,
 				CustomerEmail: customerEmail,
 				CustomerName:  customerName,
-				Rating:        0, // Extract from ratings if available
+				Rating:        avgRating,
 				Title:         "",
 				Comment:       review.Content,
 				IsVerified:    review.VerifiedPurchase,
@@ -168,30 +201,33 @@ func (h *ReviewsHandler) CreateReview(c *gin.Context) {
 
 	// Publish review created event for audit logging (non-blocking)
 	if h.eventsPublisher != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+		eventRating := extractAverageRating(review.Ratings)
+		if eventRating > 0 {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
 
-			customerName := ""
-			if review.UserName != nil {
-				customerName = *review.UserName
-			}
+				customerName := ""
+				if review.UserName != nil {
+					customerName = *review.UserName
+				}
 
-			if err := h.eventsPublisher.PublishReviewCreated(
-				ctx,
-				tenantID,
-				review.ID.String(),
-				review.TargetID,
-				review.TargetType,
-				review.UserID,
-				customerName,
-				0, // Rating extracted from ratings JSON if needed
-				review.Content,
-				review.VerifiedPurchase,
-			); err != nil {
-				log.Printf("[REVIEWS] Failed to publish review created event: %v", err)
-			}
-		}()
+				if err := h.eventsPublisher.PublishReviewCreated(
+					ctx,
+					tenantID,
+					review.ID.String(),
+					review.TargetID,
+					review.TargetType,
+					review.UserID,
+					customerName,
+					eventRating,
+					review.Content,
+					review.VerifiedPurchase,
+				); err != nil {
+					log.Printf("[REVIEWS] Failed to publish review created event: %v", err)
+				}
+			}()
+		}
 	}
 
 	c.JSON(http.StatusCreated, models.ReviewResponse{
@@ -1138,6 +1174,8 @@ func (h *ReviewsHandler) StorefrontCreateReview(c *gin.Context) {
 
 			productName := req.TargetType
 
+			sfAvgRating := extractAverageRating(review.Ratings)
+
 			notification := &clients.ReviewNotification{
 				TenantID:      tenantID,
 				ReviewID:      review.ID.String(),
@@ -1145,7 +1183,7 @@ func (h *ReviewsHandler) StorefrontCreateReview(c *gin.Context) {
 				ProductName:   productName,
 				CustomerEmail: userEmail,
 				CustomerName:  userName,
-				Rating:        0,
+				Rating:        sfAvgRating,
 				Title:         "",
 				Comment:       review.Content,
 				IsVerified:    false,
@@ -1163,27 +1201,30 @@ func (h *ReviewsHandler) StorefrontCreateReview(c *gin.Context) {
 		}()
 	}
 
-	// Publish review created event (non-blocking)
+	// Publish review created event (non-blocking, only when rating is available)
 	if h.eventsPublisher != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+		eventRating := extractAverageRating(review.Ratings)
+		if eventRating > 0 {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
 
-			if err := h.eventsPublisher.PublishReviewCreated(
-				ctx,
-				tenantID,
-				review.ID.String(),
-				review.TargetID,
-				review.TargetType,
-				review.UserID,
-				userName,
-				0,
-				review.Content,
-				false,
-			); err != nil {
-				log.Printf("[REVIEWS] Failed to publish storefront review created event: %v", err)
-			}
-		}()
+				if err := h.eventsPublisher.PublishReviewCreated(
+					ctx,
+					tenantID,
+					review.ID.String(),
+					review.TargetID,
+					review.TargetType,
+					review.UserID,
+					userName,
+					eventRating,
+					review.Content,
+					false,
+				); err != nil {
+					log.Printf("[REVIEWS] Failed to publish storefront review created event: %v", err)
+				}
+			}()
+		}
 	}
 
 	c.JSON(http.StatusCreated, models.ReviewResponse{

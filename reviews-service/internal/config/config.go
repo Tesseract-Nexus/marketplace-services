@@ -80,8 +80,8 @@ func Load() *Config {
 		JWTSecret: secrets.GetJWTSecret(),
 
 		// Notification service for email notifications
-		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.devtest.svc.cluster.local:8090"),
-		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.devtest.svc.cluster.local:8087"),
+		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service.marketplace.svc.cluster.local:8090"),
+		TenantServiceURL:       getEnv("TENANT_SERVICE_URL", "http://tenant-service.marketplace.svc.cluster.local:8080"),
 
 		// Services
 		DocumentServiceURL: getEnv("DOCUMENT_SERVICE_URL", "http://localhost:8082"),
