@@ -55,14 +55,14 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		return
 	}
 
-	var req models.Category
+	var req models.CreateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate image count limit (max 3 images per category)
-	if req.Images != nil && len(*req.Images) > models.CategoryMediaLimits.MaxImages {
+	if len(req.Images) > models.CategoryMediaLimits.MaxImages {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"error": gin.H{
@@ -74,25 +74,86 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		return
 	}
 
-	req.ID = uuid.New()
-	req.TenantID = tenantID // Always use tenant from context, never from request
-	req.CreatedByID = c.GetString("user_id")
-	req.UpdatedByID = c.GetString("user_id")
+	// Build Category model from request
+	category := models.Category{
+		ID:             uuid.New(),
+		TenantID:       tenantID, // Always use tenant from context, never from request
+		CreatedByID:    c.GetString("user_id"),
+		UpdatedByID:    c.GetString("user_id"),
+		Name:           req.Name,
+		Description:    req.Description,
+		ImageURL:       req.ImageURL,
+		BannerURL:      req.BannerURL,
+		ParentID:       req.ParentID,
+		IsActive:       true,
+		Status:         models.StatusDraft,
+		Tier:           req.Tier,
+		SeoTitle:       req.SeoTitle,
+		SeoDescription: req.SeoDescription,
+		Metadata:       req.Metadata,
+	}
 
-	// Generate slug if not provided
-	if req.Slug == "" {
-		req.Slug = generateSlug(req.Name)
+	// Handle slug
+	if req.Slug != nil && *req.Slug != "" {
+		category.Slug = *req.Slug
+	} else {
+		category.Slug = generateSlug(req.Name)
+	}
+
+	// Handle optional position
+	if req.Position != nil {
+		category.Position = *req.Position
+	}
+
+	// Handle optional isActive
+	if req.IsActive != nil {
+		category.IsActive = *req.IsActive
+	}
+
+	// Convert images to JSONArray for GORM storage
+	if len(req.Images) > 0 {
+		imagesJSON := make(models.JSONArray, len(req.Images))
+		for i, img := range req.Images {
+			imgMap := map[string]interface{}{
+				"id":       img.ID,
+				"url":      img.URL,
+				"position": img.Position,
+			}
+			if img.AltText != nil {
+				imgMap["altText"] = *img.AltText
+			}
+			if img.Width != nil {
+				imgMap["width"] = *img.Width
+			}
+			if img.Height != nil {
+				imgMap["height"] = *img.Height
+			}
+			imagesJSON[i] = imgMap
+		}
+		category.Images = &imagesJSON
+	}
+
+	// Convert tags []string to JSON format {"items": [...]}
+	if len(req.Tags) > 0 {
+		tags := models.JSON{"items": req.Tags}
+		category.Tags = &tags
+	}
+
+	// Convert seoKeywords []string to JSON format {"items": [...]}
+	if len(req.SeoKeywords) > 0 {
+		keywords := models.JSON{"items": req.SeoKeywords}
+		category.SeoKeywords = &keywords
 	}
 
 	// Check if category with same slug already exists - return existing one instead of creating duplicate
-	existingCategory, err := h.repo.GetBySlug(tenantID, req.Slug)
+	existingCategory, err := h.repo.GetBySlug(tenantID, category.Slug)
 	if err == nil && existingCategory != nil {
 		// Category already exists - return it with 200 OK (not error)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": existingCategory})
 		return
 	}
 
-	if err := h.repo.Create(&req); err != nil {
+	if err := h.repo.Create(&category); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
 		return
 	}
@@ -101,20 +162,20 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	if h.eventsPublisher != nil {
 		actor := gosharedmw.GetActorInfo(c)
 		parentID := ""
-		if req.ParentID != nil {
-			parentID = req.ParentID.String()
+		if category.ParentID != nil {
+			parentID = category.ParentID.String()
 		}
 		description := ""
-		if req.Description != nil {
-			description = *req.Description
+		if category.Description != nil {
+			description = *category.Description
 		}
 		_ = h.eventsPublisher.PublishCategoryCreated(
 			c.Request.Context(),
 			tenantID,
-			req.ID.String(),
-			req.Name,
+			category.ID.String(),
+			category.Name,
 			parentID,
-			req.Slug,
+			category.Slug,
 			description,
 			actor.ActorID,
 			actor.ActorName,
@@ -141,8 +202,8 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 			tenantID,
 			userID,
 			userName,
-			req.ID.String(),
-			req.Name,
+			category.ID.String(),
+			category.Name,
 		)
 		if err == nil && approvalResp != nil && approvalResp.Data != nil {
 			approvalID = &approvalResp.Data.ID
@@ -160,16 +221,14 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 				)
 				if autoApproveErr == nil && autoApproveResp != nil && autoApproveResp.Success {
 					autoApproved = true
-					// Update category status to published (if there's a status field)
-					// For now, categories may not have a status field, so just mark as auto-approved
 				} else {
-					fmt.Printf("Warning: Auto-approval failed for category %s: %v\n", req.ID.String(), autoApproveErr)
+					fmt.Printf("Warning: Auto-approval failed for category %s: %v\n", category.ID.String(), autoApproveErr)
 				}
 			}
 		}
 		// Log error but don't fail category creation if approval service is unavailable
 		if err != nil {
-			fmt.Printf("Warning: Failed to create approval request for category %s: %v\n", req.ID.String(), err)
+			fmt.Printf("Warning: Failed to create approval request for category %s: %v\n", category.ID.String(), err)
 		}
 	}
 
@@ -178,7 +237,7 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		if autoApproved {
 			c.JSON(http.StatusCreated, gin.H{
 				"success":      true,
-				"data":         req,
+				"data":         category,
 				"message":      "Category created and published (auto-approved)",
 				"approvalId":   *approvalID,
 				"autoApproved": true,
@@ -187,14 +246,14 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 		}
 		c.JSON(http.StatusAccepted, gin.H{
 			"success":    true,
-			"data":       req,
+			"data":       category,
 			"message":    "Category created in draft status. Pending approval for publication.",
 			"approvalId": *approvalID,
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": req})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": category})
 }
 
 // GetCategoryList returns list of categories for the current tenant
