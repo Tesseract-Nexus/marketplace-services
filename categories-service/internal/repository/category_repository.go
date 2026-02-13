@@ -35,6 +35,11 @@ func NewCategoryRepository(db *gorm.DB, redis *redis.Client) *CategoryRepository
 	}
 }
 
+// DB returns the underlying gorm.DB instance for advanced queries
+func (r *CategoryRepository) DB() *gorm.DB {
+	return r.db
+}
+
 // invalidateCategoryCaches invalidates all caches related to categories for a tenant
 func (r *CategoryRepository) invalidateCategoryCaches(ctx context.Context, tenantID string, categoryID *string) {
 	if r.redis == nil {
@@ -352,6 +357,16 @@ func (r *CategoryRepository) SlugExistsForTenant(tenantID, slug string) (bool, e
 func (r *CategoryRepository) GetBySlug(tenantID, slug string) (*models.Category, error) {
 	var category models.Category
 	err := r.db.Where("tenant_id = ? AND slug = ?", tenantID, slug).First(&category).Error
+	if err != nil {
+		return nil, err
+	}
+	return &category, nil
+}
+
+// GetBySlugUnscoped retrieves a category by slug including soft-deleted records
+func (r *CategoryRepository) GetBySlugUnscoped(tenantID, slug string) (*models.Category, error) {
+	var category models.Category
+	err := r.db.Unscoped().Where("tenant_id = ? AND slug = ?", tenantID, slug).First(&category).Error
 	if err != nil {
 		return nil, err
 	}

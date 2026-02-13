@@ -148,14 +148,30 @@ func (h *CategoryHandler) CreateCategory(c *gin.Context) {
 	// Check if category with same slug already exists - return existing one instead of creating duplicate
 	existingCategory, err := h.repo.GetBySlug(tenantID, category.Slug)
 	if err == nil && existingCategory != nil {
-		// Category already exists - return it with 200 OK (not error)
+		// Category already exists (active) - return it with 200 OK (not error)
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": existingCategory})
 		return
 	}
 
-	if err := h.repo.Create(&category); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
-		return
+	// Check for soft-deleted category with same slug - restore it instead of creating a new one
+	softDeleted, sdErr := h.repo.GetBySlugUnscoped(tenantID, category.Slug)
+	if sdErr == nil && softDeleted != nil && softDeleted.DeletedAt != nil {
+		// Restore the soft-deleted category with updated fields
+		softDeleted.DeletedAt = nil
+		softDeleted.Name = category.Name
+		softDeleted.IsActive = category.IsActive
+		softDeleted.Status = models.StatusDraft
+		softDeleted.UpdatedByID = category.UpdatedByID
+		if err := h.repo.DB().Unscoped().Save(softDeleted).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restore category"})
+			return
+		}
+		category = *softDeleted
+	} else {
+		if err := h.repo.Create(&category); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
+			return
+		}
 	}
 
 	// Publish category created event for audit trail
